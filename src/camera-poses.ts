@@ -38,7 +38,7 @@ const registerCameraPosesEvents = (events: Events) => {
 
         if (orderedPoses.length > 1) {
             // interpolate camera positions and rotations (all in one spline, 7 dimensions)
-            const spline = CubicSpline.fromPointsLooping(duration, times, points, events.invoke('timeline.smoothness'));
+            const spline = CubicSpline.fromPoints(times, points, events.invoke('timeline.smoothness'));
             const result: number[] = [];
             const pose = { position: new Vec3(), rotation: new Quat() };
 

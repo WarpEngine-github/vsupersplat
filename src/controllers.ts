@@ -189,7 +189,15 @@ class PointerController {
             ArrowUp: 0,
             ArrowDown: 0,
             ArrowLeft: 0,
-            ArrowRight: 0
+            ArrowRight: 0,
+            w: 0,  // W key
+            W: 0,  // W key (uppercase)
+            s: 0,  // S key
+            S: 0,  // S key (uppercase)
+            a: 0,  // A key
+            A: 0,  // A key (uppercase)
+            d: 0,  // D key
+            D: 0   // D key (uppercase)
         };
 
         const keydown = (event: KeyboardEvent) => {
@@ -205,8 +213,9 @@ class PointerController {
         };
 
         this.update = (deltaTime: number) => {
-            const x = keys.ArrowRight - keys.ArrowLeft;
-            const z = keys.ArrowDown - keys.ArrowUp;
+            // Combine arrow keys and WASD keys
+            const x = (keys.ArrowRight + keys.d + keys.D) - (keys.ArrowLeft + keys.a + keys.A);
+            const z = (keys.ArrowDown + keys.s + keys.S) - (keys.ArrowUp + keys.w + keys.W);
 
             if (x || z) {
                 const factor = deltaTime * camera.flySpeed;

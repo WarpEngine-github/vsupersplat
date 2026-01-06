@@ -65,6 +65,7 @@
     "panel.view-options.show-grid": "Raster anzeigen",
     "panel.view-options.show-bound": "Objektbox anzeigen",
     "panel.view-options.fly-speed": "Kamera Geschwindigkeit",
+    "panel.view-options.rotation-sensitivity": "Rotationsempfindlichkeit",
     "panel.view-options.high-precision": "Rendering in hoher Präzision",
     "panel.view-options.tonemapping": "Tonemapping",
     "panel.view-options.tonemapping.none": "Keins",

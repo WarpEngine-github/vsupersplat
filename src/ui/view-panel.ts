@@ -222,18 +222,18 @@ class ViewPanel extends Container {
         cameraFlySpeedRow.append(cameraFlySpeedLabel);
         cameraFlySpeedRow.append(cameraFlySpeedSlider);
 
-        // orbit sensitivity
+        // rotation sensitivity
 
-        const orbitSensitivityRow = new Container({
+        const rotationSensitivityRow = new Container({
             class: 'view-panel-row'
         });
 
-        const orbitSensitivityLabel = new Label({
-            text: localize('panel.view-options.orbit-sensitivity') || 'Orbit Sensitivity',
+        const rotationSensitivityLabel = new Label({
+            text: localize('panel.view-options.rotation-sensitivity') || 'Rotation Sensitivity',
             class: 'view-panel-row-label'
         });
 
-        const orbitSensitivitySlider = new SliderInput({
+        const rotationSensitivitySlider = new SliderInput({
             class: 'view-panel-row-slider',
             min: 0.1,
             max: 50.0,
@@ -241,8 +241,8 @@ class ViewPanel extends Container {
             value: 1.0
         });
 
-        orbitSensitivityRow.append(orbitSensitivityLabel);
-        orbitSensitivityRow.append(orbitSensitivitySlider);
+        rotationSensitivityRow.append(rotationSensitivityLabel);
+        rotationSensitivityRow.append(rotationSensitivitySlider);
 
         // high precision (render to float)
 
@@ -331,7 +331,7 @@ class ViewPanel extends Container {
         this.append(shBandsRow);
         this.append(centersSizeRow);
         this.append(cameraFlySpeedRow);
-        this.append(orbitSensitivityRow);
+        this.append(rotationSensitivityRow);
         this.append(highPrecisionRow);
         this.append(outlineSelectionRow);
         this.append(showGridRow);
@@ -396,14 +396,14 @@ class ViewPanel extends Container {
             events.fire('camera.setFlySpeed', value);
         });
 
-        // orbit sensitivity
+        // rotation sensitivity
 
-        events.on('camera.orbitSensitivity', (value: number) => {
-            orbitSensitivitySlider.value = value;
+        events.on('camera.rotationSensitivity', (value: number) => {
+            rotationSensitivitySlider.value = value;
         });
 
-        orbitSensitivitySlider.on('change', (value: number) => {
-            events.fire('camera.setOrbitSensitivity', value);
+        rotationSensitivitySlider.on('change', (value: number) => {
+            events.fire('camera.setRotationSensitivity', value);
         });
 
         // outline selection

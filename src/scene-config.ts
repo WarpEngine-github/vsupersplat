@@ -32,7 +32,7 @@ const sceneConfig = {
         maxPolarAngle: Math.PI,
         initialAzim: -45,
         initialElev: -10,
-        orbitSensitivity: 10.0  // degrees per pixel
+        rotationSensitivity: 10.0  // degrees per pixel
     },
     debug: {
         showBound: false

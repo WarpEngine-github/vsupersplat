@@ -65,6 +65,7 @@
     "panel.view-options.show-grid": "Mostrar Grade",
     "panel.view-options.show-bound": "Mostrar Limite",
     "panel.view-options.fly-speed": "Velocidade de Voo",
+    "panel.view-options.rotation-sensitivity": "Sensibilidade de Rotação",
     "panel.view-options.high-precision": "Render de alta definição",
     "panel.view-options.tonemapping": "Mapeamento de Tons",
     "panel.view-options.tonemapping.none": "Nenhum",

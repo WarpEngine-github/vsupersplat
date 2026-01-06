@@ -657,14 +657,14 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
         setFlySpeed(value);
     });
 
-    events.function('camera.orbitSensitivity', () => {
-        return scene.config.controls.orbitSensitivity;
+    events.function('camera.rotationSensitivity', () => {
+        return scene.config.controls.rotationSensitivity;
     });
 
-    events.on('camera.setOrbitSensitivity', (value: number) => {
-        if (value !== scene.config.controls.orbitSensitivity) {
-            scene.config.controls.orbitSensitivity = value;
-            events.fire('camera.orbitSensitivity', value);
+    events.on('camera.setRotationSensitivity', (value: number) => {
+        if (value !== scene.config.controls.rotationSensitivity) {
+            scene.config.controls.rotationSensitivity = value;
+            events.fire('camera.rotationSensitivity', value);
         }
     });
 
@@ -724,7 +724,7 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
     events.fire('camera.fov', scene.camera.fov);
     events.fire('camera.overlay', cameraOverlay);
     events.fire('view.bands', viewBands);
-    events.fire('camera.orbitSensitivity', scene.config.controls.orbitSensitivity);
+    events.fire('camera.rotationSensitivity', scene.config.controls.rotationSensitivity);
 
     // doc serialization
     events.function('docSerialize.view', () => {

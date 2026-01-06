@@ -20,7 +20,7 @@ class PointerController {
             const currentRot = camera.rotation.clone();
             // Sensitivity is stored as a multiplier (0.01-5.0), convert to degrees per pixel
             // A value of 1.0 = 1 degree per pixel, 0.3 = 0.3 degrees per pixel
-            const sensitivity = camera.scene.config.controls.orbitSensitivity;
+            const sensitivity = camera.scene.config.controls.rotationSensitivity;
             
             // Create rotation deltas in radians (sensitivity is already in degrees per pixel)
             const yawDelta = -dx * sensitivity * Math.PI / 180;

@@ -62,9 +62,8 @@ const mod = (n: number, m: number) => ((n % m) + m) % m;
 class Camera extends Element {
     controller: PointerController;
     entity: Entity;
-    focalPointTween = new TweenValue({ x: 0, y: 0.5, z: 0 });
-    azimElevTween = new TweenValue({ azim: 30, elev: -15 });
-    distanceTween = new TweenValue({ distance: 1 });
+    positionTween = new TweenValue({ x: 0, y: 0, z: 1 });
+    rotationTween = new TweenValue({ x: 0, y: 0, z: 0, w: 1 });
 
     minElev = -90;
     maxElev = 90;
@@ -169,79 +168,31 @@ class Camera extends Element {
         return this.entity.camera.farClip;
     }
 
-    // focal point
-    get focalPoint() {
-        const t = this.focalPointTween.target;
+    // position
+    get position() {
+        const t = this.positionTween.value;
         return new Vec3(t.x, t.y, t.z);
     }
 
-    // azimuth, elevation
-    get azimElev() {
-        return this.azimElevTween.target;
+    // rotation
+    get rotation() {
+        const t = this.rotationTween.value;
+        return new Quat(t.x, t.y, t.z, t.w);
     }
 
-    get azim() {
-        return this.azimElev.azim;
+    setPosition(position: Vec3, dampingFactorFactor: number = 1) {
+        this.positionTween.goto(position, dampingFactorFactor * this.scene.config.controls.dampingFactor);
     }
 
-    get elevation() {
-        return this.azimElev.elev;
-    }
-
-    get distance() {
-        return this.distanceTween.target.distance;
-    }
-
-    setFocalPoint(point: Vec3, dampingFactorFactor: number = 1) {
-        this.focalPointTween.goto(point, dampingFactorFactor * this.scene.config.controls.dampingFactor);
-    }
-
-    setAzimElev(azim: number, elev: number, dampingFactorFactor: number = 1) {
-        // clamp
-        azim = mod(azim, 360);
-        elev = Math.max(this.minElev, Math.min(this.maxElev, elev));
-
-        const t = this.azimElevTween;
-        t.goto({ azim, elev }, dampingFactorFactor * this.scene.config.controls.dampingFactor);
-
-        // handle wraparound
-        if (t.source.azim - azim < -180) {
-            t.source.azim += 360;
-        } else if (t.source.azim - azim > 180) {
-            t.source.azim -= 360;
-        }
-
+    setRotation(rotation: Quat, dampingFactorFactor: number = 1) {
+        this.rotationTween.goto({ x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w }, dampingFactorFactor * this.scene.config.controls.dampingFactor);
         // return to perspective mode on rotation
         this.ortho = false;
     }
 
-    setDistance(distance: number, dampingFactorFactor: number = 1) {
-        const controls = this.scene.config.controls;
-
-        // clamp
-        distance = Math.max(controls.minZoom, Math.min(controls.maxZoom, distance));
-
-        const t = this.distanceTween;
-        t.goto({ distance }, dampingFactorFactor * controls.dampingFactor);
-    }
-
     setPose(position: Vec3, rotation: Quat, dampingFactorFactor: number = 1) {
-        // Convert rotation quaternion to azim/elev angles
-        const euler = new Vec3();
-        rotation.getEulerAngles(euler);
-        const azim = euler.y;
-        const elev = euler.x;
-        
-        // Calculate forward vector from rotation
-        const forward = new Vec3(0, 0, -1);
-        rotation.transformVector(forward, forward);
-        
-        // Use current distance to calculate focal point
-        const distance = this.distance * this.sceneRadius / this.fovFactor;
-        const target = position.clone().add(forward.mulScalar(distance));
-        
-        this.setFocalPoint(target, dampingFactorFactor);
-        this.setAzimElev(azim, elev, dampingFactorFactor);
+        this.setPosition(position, dampingFactorFactor);
+        this.setRotation(rotation, dampingFactorFactor);
     }
 
     // transform the world space coordinate to normalized screen coordinate
@@ -299,8 +250,10 @@ class Camera extends Element {
         this.fov = config.camera.fov;
 
         // initial camera position and orientation
-        this.setAzimElev(controls.initialAzim, controls.initialElev, 0);
-        this.setDistance(controls.initialZoom, 0);
+        const initialRot = new Quat().setFromEulerAngles(controls.initialElev, controls.initialAzim, 0);
+        // Position camera at origin
+        const initialPos = new Vec3(0, 0, 0);
+        this.setPose(initialPos, initialRot, 0);
 
         // picker
         const { width, height } = this.scene.targetSize;
@@ -350,23 +303,23 @@ class Camera extends Element {
 
         // temp control of camera start
         const url = new URL(location.href);
-        const focal = url.searchParams.get('focal');
-        if (focal) {
-            const parts = focal.toString().split(',');
+        const position = url.searchParams.get('position');
+        if (position) {
+            const parts = position.toString().split(',');
             if (parts.length === 3) {
-                this.setFocalPoint(new Vec3(parseFloat(parts[0]), parseFloat(parts[1]), parseFloat(parts[2])), 0);
+                const pos = new Vec3(parseFloat(parts[0]), parseFloat(parts[1]), parseFloat(parts[2]));
+                const rot = this.rotation;
+                this.setPose(pos, rot, 0);
             }
         }
-        const angles = url.searchParams.get('angles');
-        if (angles) {
-            const parts = angles.toString().split(',');
-            if (parts.length === 2) {
-                this.setAzimElev(parseFloat(parts[0]), parseFloat(parts[1]), 0);
+        const rotation = url.searchParams.get('rotation');
+        if (rotation) {
+            const parts = rotation.toString().split(',');
+            if (parts.length === 4) {
+                const rot = new Quat(parseFloat(parts[0]), parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3]));
+                const pos = this.position;
+                this.setPose(pos, rot, 0);
             }
-        }
-        const distance = url.searchParams.get('distance');
-        if (distance) {
-            this.setDistance(parseFloat(distance), 0);
         }
     }
 
@@ -384,13 +337,9 @@ class Camera extends Element {
         this.scene.events.off('scene.boundChanged', this.onBoundChanged, this);
     }
 
-    // handle the scene's bound changing. the camera must be configured to render
-    // the entire extents as well as possible.
-    // also update the existing camera distance to maintain the current view
+    // handle the scene's bound changing
     onBoundChanged(bound: BoundingBox) {
-        const prevDistance = this.distanceTween.value.distance * this.sceneRadius;
         this.sceneRadius = Math.max(1e-03, bound.halfExtents.length());
-        this.setDistance(prevDistance / this.sceneRadius, 0);
     }
 
     serialize(serializer: Serializer) {
@@ -470,25 +419,24 @@ class Camera extends Element {
         this.controller.update(deltaTime);
 
         // update underlying values
-        this.focalPointTween.update(deltaTime);
-        this.azimElevTween.update(deltaTime);
-        this.distanceTween.update(deltaTime);
+        this.positionTween.update(deltaTime);
+        this.rotationTween.update(deltaTime);
 
-        const azimElev = this.azimElevTween.value;
-        const distance = this.distanceTween.value;
+        const pos = this.positionTween.value;
+        const rot = this.rotationTween.value;
 
-        calcForwardVec(forwardVec, azimElev.azim, azimElev.elev);
-        cameraPosition.copy(forwardVec);
-        cameraPosition.mulScalar(distance.distance * this.sceneRadius / this.fovFactor);
-        cameraPosition.add(this.focalPointTween.value);
-
+        cameraPosition.set(pos.x, pos.y, pos.z);
         this.entity.setLocalPosition(cameraPosition);
-        this.entity.setLocalEulerAngles(azimElev.elev, azimElev.azim, 0);
+        
+        const rotQuat = new Quat(rot.x, rot.y, rot.z, rot.w);
+        this.entity.setLocalRotation(rotQuat);
 
         this.fitClippingPlanes(this.entity.getLocalPosition(), this.entity.forward);
 
         const { camera } = this.entity;
-        camera.orthoHeight = this.distanceTween.value.distance * this.sceneRadius / this.fovFactor * (this.fov / 90) * (camera.horizontalFov ? this.scene.targetSize.height / this.scene.targetSize.width : 1);
+        // Calculate ortho height from scene bounds
+        const boundRadius = this.scene.bound.halfExtents.length();
+        camera.orthoHeight = boundRadius * 2 * (this.fov / 90) * (camera.horizontalFov ? this.scene.targetSize.height / this.scene.targetSize.width : 1);
         camera.camera._updateViewProjMat();
     }
 
@@ -545,10 +493,21 @@ class Camera extends Element {
         const focalPoint = options ? options.focalPoint : (getSplatFocalPoint() ?? this.scene.bound.center);
         const focalRadius = options ? options.radius : this.scene.bound.halfExtents.length();
 
-        const fdist = focalRadius / this.sceneRadius;
-
-        this.setDistance(isFinite(fdist) ? fdist : 1, options?.speed ?? 0);
-        this.setFocalPoint(focalPoint, options?.speed ?? 0);
+        // Calculate position offset from focal point
+        const currentPos = this.position;
+        const offset = currentPos.clone().sub(focalPoint);
+        const distance = offset.length();
+        const newDistance = focalRadius * 1.5; // Position camera at 1.5x radius away
+        
+        if (distance > 0) {
+            offset.normalize().mulScalar(newDistance);
+        } else {
+            offset.set(0, 0, newDistance);
+        }
+        
+        const newPos = focalPoint.clone().add(offset);
+        const newRot = this.rotation; // Keep current rotation
+        this.setPose(newPos, newRot, options?.speed ?? 0);
     }
 
     get fovFactor() {
@@ -628,14 +587,22 @@ class Camera extends Element {
         };
     }
 
-    // intersect the scene at the screen location and focus the camera on this location
+    // intersect the scene at the screen location and move camera to look at this location
     pickFocalPoint(screenX: number, screenY: number) {
         const result = this.intersect(screenX, screenY);
         if (result) {
             const { scene } = this;
 
-            this.setFocalPoint(result.position);
-            this.setDistance(result.distance / this.sceneRadius * this.fovFactor);
+            // Calculate rotation to look at the picked point
+            const currentPos = this.position;
+            const up = new Vec3(0, 1, 0);
+            
+            const rotMat = new Mat4();
+            rotMat.setLookAt(currentPos, result.position, up);
+            const newRot = new Quat();
+            newRot.setFromMat4(rotMat);
+            
+            this.setPose(currentPos, newRot, 0);
             scene.events.fire('camera.focalPointPicked', {
                 camera: this,
                 splat: result.splat,
@@ -703,21 +670,39 @@ class Camera extends Element {
 
     docSerialize() {
         const pack3 = (v: Vec3) => [v.x, v.y, v.z];
+        const pack4 = (q: Quat) => [q.x, q.y, q.z, q.w];
+        const pos = this.position;
+        const rot = this.rotation;
 
         return {
-            focalPoint: pack3(this.focalPointTween.target),
-            azim: this.azim,
-            elev: this.elevation,
-            distance: this.distance,
+            position: pack3(pos),
+            rotation: pack4(rot),
             fov: this.fov,
             tonemapping: this.tonemapping
         };
     }
 
     docDeserialize(settings: any) {
-        this.setFocalPoint(new Vec3(settings.focalPoint), 0);
-        this.setAzimElev(settings.azim, settings.elev, 0);
-        this.setDistance(settings.distance, 0);
+        if (settings.position && settings.rotation) {
+            const pos = new Vec3(settings.position[0], settings.position[1], settings.position[2]);
+            const rot = new Quat(settings.rotation[0], settings.rotation[1], settings.rotation[2], settings.rotation[3]);
+            this.setPose(pos, rot, 0);
+        } else if (settings.focalPoint && settings.azim !== undefined && settings.elev !== undefined) {
+            // Backward compatibility: convert old focal point system to position/rotation
+            const azim = settings.azim * math.DEG_TO_RAD;
+            const elev = settings.elev * math.DEG_TO_RAD;
+            const x = Math.sin(azim) * Math.cos(elev);
+            const y = -Math.sin(elev);
+            const z = Math.cos(azim) * Math.cos(elev);
+            const distance = settings.distance ?? 1;
+            const pos = new Vec3(
+                settings.focalPoint[0] + x * distance,
+                settings.focalPoint[1] + y * distance,
+                settings.focalPoint[2] + z * distance
+            );
+            const rot = new Quat().setFromEulerAngles(settings.elev, settings.azim, 0);
+            this.setPose(pos, rot, 0);
+        }
         this.fov = settings.fov;
         this.tonemapping = settings.tonemapping;
     }
@@ -736,3 +721,4 @@ class Camera extends Element {
 }
 
 export { Camera };
+

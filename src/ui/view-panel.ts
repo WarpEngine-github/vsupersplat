@@ -222,6 +222,28 @@ class ViewPanel extends Container {
         cameraFlySpeedRow.append(cameraFlySpeedLabel);
         cameraFlySpeedRow.append(cameraFlySpeedSlider);
 
+        // orbit sensitivity
+
+        const orbitSensitivityRow = new Container({
+            class: 'view-panel-row'
+        });
+
+        const orbitSensitivityLabel = new Label({
+            text: localize('panel.view-options.orbit-sensitivity') || 'Orbit Sensitivity',
+            class: 'view-panel-row-label'
+        });
+
+        const orbitSensitivitySlider = new SliderInput({
+            class: 'view-panel-row-slider',
+            min: 0.1,
+            max: 50.0,
+            precision: 1,
+            value: 1.0
+        });
+
+        orbitSensitivityRow.append(orbitSensitivityLabel);
+        orbitSensitivityRow.append(orbitSensitivitySlider);
+
         // high precision (render to float)
 
         const highPrecisionRow = new Container({
@@ -309,6 +331,7 @@ class ViewPanel extends Container {
         this.append(shBandsRow);
         this.append(centersSizeRow);
         this.append(cameraFlySpeedRow);
+        this.append(orbitSensitivityRow);
         this.append(highPrecisionRow);
         this.append(outlineSelectionRow);
         this.append(showGridRow);
@@ -371,6 +394,16 @@ class ViewPanel extends Container {
 
         cameraFlySpeedSlider.on('change', (value: number) => {
             events.fire('camera.setFlySpeed', value);
+        });
+
+        // orbit sensitivity
+
+        events.on('camera.orbitSensitivity', (value: number) => {
+            orbitSensitivitySlider.value = value;
+        });
+
+        orbitSensitivitySlider.on('change', (value: number) => {
+            events.fire('camera.setOrbitSensitivity', value);
         });
 
         // outline selection

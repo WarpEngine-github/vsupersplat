@@ -212,26 +212,28 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
     });
 
     events.on('camera.reset', () => {
-        const { initialAzim, initialElev, initialZoom } = scene.config.controls;
-        const x = Math.sin(initialAzim * Math.PI / 180) * Math.cos(initialElev * Math.PI / 180);
-        const y = -Math.sin(initialElev * Math.PI / 180);
-        const z = Math.cos(initialAzim * Math.PI / 180) * Math.cos(initialElev * Math.PI / 180);
-        const zoom = initialZoom;
-
-        const position = new Vec3(x * zoom, y * zoom, z * zoom);
+        const { initialAzim, initialElev } = scene.config.controls;
+        const position = new Vec3(0, 0, 0);
         const rotation = new Quat().setFromEulerAngles(initialElev, initialAzim, 0);
         scene.camera.setPose(position, rotation);
     });
 
     // handle camera align events
     events.on('camera.align', (axis: string) => {
+        const currentPos = scene.camera.position;
+        let rotation: Quat;
+        
         switch (axis) {
-            case 'px': scene.camera.setAzimElev(90, 0); break;
-            case 'py': scene.camera.setAzimElev(0, -90); break;
-            case 'pz': scene.camera.setAzimElev(0, 0); break;
-            case 'nx': scene.camera.setAzimElev(270, 0); break;
-            case 'ny': scene.camera.setAzimElev(0, 90); break;
-            case 'nz': scene.camera.setAzimElev(180, 0); break;
+            case 'px': rotation = new Quat().setFromEulerAngles(0, 90, 0); break;
+            case 'py': rotation = new Quat().setFromEulerAngles(-90, 0, 0); break;
+            case 'pz': rotation = new Quat().setFromEulerAngles(0, 0, 0); break;
+            case 'nx': rotation = new Quat().setFromEulerAngles(0, 270, 0); break;
+            case 'ny': rotation = new Quat().setFromEulerAngles(90, 0, 0); break;
+            case 'nz': rotation = new Quat().setFromEulerAngles(0, 180, 0); break;
+        }
+        
+        if (rotation) {
+            scene.camera.setPose(currentPos, rotation, 0);
         }
 
         // switch to ortho mode
@@ -655,6 +657,17 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
         setFlySpeed(value);
     });
 
+    events.function('camera.orbitSensitivity', () => {
+        return scene.config.controls.orbitSensitivity;
+    });
+
+    events.on('camera.setOrbitSensitivity', (value: number) => {
+        if (value !== scene.config.controls.orbitSensitivity) {
+            scene.config.controls.orbitSensitivity = value;
+            events.fire('camera.orbitSensitivity', value);
+        }
+    });
+
     // outline selection
 
     let outlineSelection = false;
@@ -711,6 +724,7 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
     events.fire('camera.fov', scene.camera.fov);
     events.fire('camera.overlay', cameraOverlay);
     events.fire('view.bands', viewBands);
+    events.fire('camera.orbitSensitivity', scene.config.controls.orbitSensitivity);
 
     // doc serialization
     events.function('docSerialize.view', () => {

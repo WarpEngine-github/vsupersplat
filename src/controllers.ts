@@ -1,4 +1,4 @@
-import { Vec3 } from 'playcanvas';
+import { Quat, Vec3 } from 'playcanvas';
 
 import { Camera } from './camera';
 
@@ -16,28 +16,65 @@ class PointerController {
     constructor(camera: Camera, target: HTMLElement) {
 
         const orbit = (dx: number, dy: number) => {
-            const azim = camera.azim - dx * camera.scene.config.controls.orbitSensitivity;
-            const elev = camera.elevation - dy * camera.scene.config.controls.orbitSensitivity;
-            camera.setAzimElev(azim, elev);
+            // FPS-style look around: rotate camera around its current position
+            const currentRot = camera.rotation.clone();
+            // Sensitivity is stored as a multiplier (0.01-5.0), convert to degrees per pixel
+            // A value of 1.0 = 1 degree per pixel, 0.3 = 0.3 degrees per pixel
+            const sensitivity = camera.scene.config.controls.orbitSensitivity;
+            
+            // Create rotation deltas in radians (sensitivity is already in degrees per pixel)
+            const yawDelta = -dx * sensitivity * Math.PI / 180;
+            const pitchDelta = -dy * sensitivity * Math.PI / 180;
+            
+            // Apply yaw rotation around world UP axis first
+            const yawRot = new Quat().setFromAxisAngle(Vec3.UP, yawDelta);
+            const afterYaw = new Quat();
+            afterYaw.mul2(yawRot, currentRot);
+            
+            // Get the right vector from the rotated camera to apply pitch
+            const right = new Vec3(1, 0, 0);
+            afterYaw.transformVector(right, right);
+            
+            // Clamp pitch by checking current pitch angle
+            const forward = new Vec3(0, 0, -1);
+            afterYaw.transformVector(forward, forward);
+            const currentPitch = Math.asin(Math.max(-1, Math.min(1, forward.y))) * 180 / Math.PI;
+            const newPitch = currentPitch + (pitchDelta * 180 / Math.PI);
+            const clampedPitch = Math.max(-89, Math.min(89, newPitch));
+            const pitchDeltaClamped = (clampedPitch - currentPitch) * Math.PI / 180;
+            
+            // Apply pitch rotation around camera's right vector
+            const pitchRot = new Quat().setFromAxisAngle(right, pitchDeltaClamped);
+            const finalRot = new Quat();
+            finalRot.mul2(pitchRot, afterYaw);
+            
+            // Use dampingFactorFactor = 0 to set rotation immediately without tweening
+            // This prevents accumulation errors when dragging
+            camera.setRotation(finalRot, 0);
         };
 
         const pan = (x: number, y: number, dx: number, dy: number) => {
-            // For panning to work at any zoom level, we use screen point to world projection
-            // to work out how far we need to pan the pivotEntity in world space
+            // Move camera position in screen space
             const c = camera.entity.camera;
-            const distance = camera.distanceTween.value.distance * camera.sceneRadius / camera.fovFactor;
-
-            c.screenToWorld(x, y, distance, fromWorldPoint);
-            c.screenToWorld(x - dx, y - dy, distance, toWorldPoint);
-
-            worldDiff.sub2(toWorldPoint, fromWorldPoint);
-            worldDiff.add(camera.focalPoint);
-
-            camera.setFocalPoint(worldDiff);
-        };
-
-        const zoom = (amount: number) => {
-            camera.setDistance(camera.distance - (camera.distance * 0.999 + 0.001) * amount * camera.scene.config.controls.zoomSensitivity, 2);
+            const currentPos = camera.position;
+            const currentRot = camera.rotation;
+            
+            // Get camera's right and up vectors
+            const right = new Vec3(1, 0, 0);
+            const up = new Vec3(0, 1, 0);
+            currentRot.transformVector(right, right);
+            currentRot.transformVector(up, up);
+            
+            // Calculate pan distance based on camera distance from origin
+            const distance = currentPos.length() || 1;
+            const panScale = distance * 0.001;
+            
+            // Pan in screen space
+            const panRight = right.mulScalar(-dx * panScale);
+            const panUp = up.mulScalar(dy * panScale);
+            const newPos = currentPos.clone().add(panRight).add(panUp);
+            
+            camera.setPosition(newPos);
         };
 
         // mouse state
@@ -46,7 +83,7 @@ class PointerController {
 
         // touch state
         let touches: { id: number, x: number, y: number}[] = [];
-        let midx: number, midy: number, midlen: number;
+        let midx: number, midy: number;
 
         const pointerdown = (event: PointerEvent) => {
             if (event.pointerType === 'mouse') {
@@ -71,7 +108,6 @@ class PointerController {
                 if (touches.length === 2) {
                     midx = (touches[0].x + touches[1].x) * 0.5;
                     midy = (touches[0].y + touches[1].y) * 0.5;
-                    midlen = dist(touches[0].x, touches[0].y, touches[1].x, touches[1].y);
                 }
             }
         };
@@ -112,16 +148,13 @@ class PointerController {
                 x = event.offsetX;
                 y = event.offsetY;
 
-                // right button can be used to orbit with ctrl key and to zoom with alt | meta key
+                // right button can be used to orbit with ctrl key
                 const mod = pressedButton === 2 ?
-                    (event.shiftKey || event.ctrlKey ? 'orbit' :
-                        (event.altKey || event.metaKey ? 'zoom' : null)) :
+                    (event.shiftKey || event.ctrlKey ? 'orbit' : null) :
                     null;
 
                 if (mod === 'orbit' || (mod === null && pressedButton === 0)) {
                     orbit(dx, dy);
-                } else if (mod === 'zoom' || (mod === null && pressedButton === 1)) {
-                    zoom(dy * -0.02);
                 } else if (mod === 'pan' || (mod === null && pressedButton === 2)) {
                     pan(x, y, dx, dy);
                 }
@@ -140,40 +173,15 @@ class PointerController {
 
                     const mx = (touches[0].x + touches[1].x) * 0.5;
                     const my = (touches[0].y + touches[1].y) * 0.5;
-                    const ml = dist(touches[0].x, touches[0].y, touches[1].x, touches[1].y);
 
                     pan(mx, my, (mx - midx), (my - midy));
-                    zoom((ml - midlen) * 0.01);
 
                     midx = mx;
                     midy = my;
-                    midlen = ml;
                 }
             }
         };
 
-        // fuzzy detection of mouse wheel events vs trackpad events
-        const isMouseEvent = (deltaX: number, deltaY: number) => {
-            return (Math.abs(deltaX) > 50 && deltaY === 0) ||
-                   (Math.abs(deltaY) > 50 && deltaX === 0) ||
-                   (deltaX === 0 && deltaY !== 0) && !Number.isInteger(deltaY);
-        };
-
-        const wheel = (event: WheelEvent) => {
-            const { deltaX, deltaY } = event;
-
-            if (isMouseEvent(deltaX, deltaY)) {
-                zoom(deltaY * -0.002);
-            } else if (event.ctrlKey || event.metaKey) {
-                zoom(deltaY * -0.02);
-            } else if (event.shiftKey) {
-                pan(event.offsetX, event.offsetY, deltaX, deltaY);
-            } else {
-                orbit(deltaX, deltaY);
-            }
-
-            event.preventDefault();
-        };
 
         // FIXME: safari sends canvas as target of dblclick event but chrome sends the target element
         const canvas = camera.scene.app.graphicsDevice.canvas;
@@ -219,11 +227,20 @@ class PointerController {
 
             if (x || z) {
                 const factor = deltaTime * camera.flySpeed;
-                const worldTransform = camera.entity.getWorldTransform();
-                const xAxis = worldTransform.getX().mulScalar(x * factor);
-                const zAxis = worldTransform.getZ().mulScalar(z * factor);
-                const p = camera.focalPoint.add(xAxis).add(zAxis);
-                camera.setFocalPoint(p);
+                const currentPos = camera.position;
+                const currentRot = camera.rotation;
+                
+                // Get camera's right and forward vectors
+                const right = new Vec3(1, 0, 0);
+                const forward = new Vec3(0, 0, -1);
+                currentRot.transformVector(right, right);
+                currentRot.transformVector(forward, forward);
+                
+                const moveRight = right.mulScalar(x * factor);
+                const moveForward = forward.mulScalar(-z * factor);
+                const newPos = currentPos.clone().add(moveRight).add(moveForward);
+                
+                camera.setPosition(newPos);
             }
         };
 
@@ -244,7 +261,6 @@ class PointerController {
         wrap(target, 'pointerdown', pointerdown);
         wrap(target, 'pointerup', pointerup);
         wrap(target, 'pointermove', pointermove);
-        wrap(target, 'wheel', wheel, { passive: false });
         wrap(target, 'dblclick', dblclick);
         wrap(document, 'keydown', keydown);
         wrap(document, 'keyup', keyup);

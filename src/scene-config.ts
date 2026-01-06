@@ -30,13 +30,9 @@ const sceneConfig = {
         dampingFactor: 0.2,
         minPolarAngle: 0,
         maxPolarAngle: Math.PI,
-        minZoom: 1e-6,
-        maxZoom: 10.0,
         initialAzim: -45,
         initialElev: -10,
-        initialZoom: 1.0,
-        orbitSensitivity: 0.3,
-        zoomSensitivity: 0.4
+        orbitSensitivity: 10.0  // degrees per pixel
     },
     debug: {
         showBound: false

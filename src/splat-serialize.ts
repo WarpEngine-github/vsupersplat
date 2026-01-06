@@ -40,7 +40,7 @@ type AnimTrack = {
         times: number[],
         values: {
             position: number[],
-            target: number[],
+            rotation: number[],
         }
     }
 };
@@ -49,7 +49,7 @@ type ExperienceSettings = {
     camera: {
         fov?: number,
         position?: number[],
-        target?: number[],
+        rotation?: number[],
         startAnim: 'none' | 'orbit' | 'animTrack',
         animTrack: string
     },

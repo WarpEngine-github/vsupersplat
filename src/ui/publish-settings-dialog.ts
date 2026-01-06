@@ -280,7 +280,7 @@ class PublishSettingsDialog extends Container {
                             break;
                     }
                     const p = pose?.position;
-                    const t = pose?.target;
+                    const r = pose?.rotation;
 
                     const startAnim = (() => {
                         switch (animationSelect.value) {
@@ -298,12 +298,12 @@ class PublishSettingsDialog extends Container {
                             // use camera poses
                             const times = [];
                             const position = [];
-                            const target = [];
+                            const rotation = [];
                             for (let i = 0; i < orderedPoses.length; ++i) {
                                 const p = orderedPoses[i];
                                 times.push(p.frame);
                                 position.push(p.position.x, p.position.y, p.position.z);
-                                target.push(p.target.x, p.target.y, p.target.z);
+                                rotation.push(p.rotation.x, p.rotation.y, p.rotation.z, p.rotation.w);
                             }
 
                             animTracks.push({
@@ -316,7 +316,7 @@ class PublishSettingsDialog extends Container {
                                 smoothness,
                                 keyframes: {
                                     times,
-                                    values: { position, target }
+                                    values: { position, rotation }
                                 }
                             });
 
@@ -329,7 +329,7 @@ class PublishSettingsDialog extends Container {
                         camera: {
                             fov: fovSlider.value,
                             position: p ? [p.x, p.y, p.z] : null,
-                            target: t ? [t.x, t.y, t.z] : null,
+                            rotation: r ? [r.x, r.y, r.z, r.w] : null,
                             startAnim,
                             animTrack: startAnim === 'animTrack' ? 'cameraAnim' : null
                         },

@@ -1,4 +1,4 @@
-import { Vec3 } from 'playcanvas';
+import { Quat, Vec3 } from 'playcanvas';
 
 import { CubicSpline } from './anim/spline';
 import { Events } from './events';
@@ -7,7 +7,7 @@ type Pose = {
     name: string,
     frame: number,
     position: Vec3,
-    target: Vec3
+    rotation: Quat
 };
 
 const registerCameraPosesEvents = (events: Events) => {
@@ -27,17 +27,20 @@ const registerCameraPosesEvents = (events: Events) => {
         // construct the spline points to be interpolated
         const times = orderedPoses.map(p => p.frame);
         const points = [];
+        // For each pose, push all values: position (3) + rotation (4) = 7 values per pose
         for (let i = 0; i < orderedPoses.length; ++i) {
             const p = orderedPoses[i];
+            // Position: x, y, z
             points.push(p.position.x, p.position.y, p.position.z);
-            points.push(p.target.x, p.target.y, p.target.z);
+            // Rotation: quaternion components x, y, z, w
+            points.push(p.rotation.x, p.rotation.y, p.rotation.z, p.rotation.w);
         }
 
         if (orderedPoses.length > 1) {
-            // interpolate camera positions and camera target positions
+            // interpolate camera positions and rotations (all in one spline, 7 dimensions)
             const spline = CubicSpline.fromPointsLooping(duration, times, points, events.invoke('timeline.smoothness'));
             const result: number[] = [];
-            const pose = { position: new Vec3(), target: new Vec3() };
+            const pose = { position: new Vec3(), rotation: new Quat() };
 
             // handle application update tick
             onTimelineChange = (frame: number) => {
@@ -47,8 +50,11 @@ const registerCameraPosesEvents = (events: Events) => {
                 spline.evaluate(time, result);
 
                 // set camera pose
+                // result[0-2] = interpolated position
                 pose.position.set(result[0], result[1], result[2]);
-                pose.target.set(result[3], result[4], result[5]);
+                // result[3-6] = interpolated rotation quaternion components
+                pose.rotation.set(result[3], result[4], result[5], result[6]);
+                pose.rotation.normalize();
                 events.fire('camera.setPose', pose, 0);
             };
         } else {
@@ -130,7 +136,7 @@ const registerCameraPosesEvents = (events: Events) => {
             name: `camera_${poses.length}`,
             frame,
             position: pose.position,
-            target: pose.target
+            rotation: pose.rotation
         });
     });
 
@@ -166,6 +172,7 @@ const registerCameraPosesEvents = (events: Events) => {
 
     events.function('docSerialize.poseSets', (): any[] => {
         const pack3 = (v: Vec3) => [v.x, v.y, v.z];
+        const pack4 = (q: Quat) => [q.x, q.y, q.z, q.w];
 
         if (poses.length === 0) {
             return [];
@@ -178,7 +185,7 @@ const registerCameraPosesEvents = (events: Events) => {
                     name: pose.name,
                     frame: pose.frame,
                     position: pack3(pose.position),
-                    target: pack3(pose.target)
+                    rotation: pack4(pose.rotation)
                 };
             })
         }];
@@ -197,7 +204,7 @@ const registerCameraPosesEvents = (events: Events) => {
                 name: docPose.name,
                 frame: docPose.frame ?? (index * fps),
                 position: new Vec3(docPose.position),
-                target: new Vec3(docPose.target)
+                rotation: new Quat(docPose.rotation[0], docPose.rotation[1], docPose.rotation[2], docPose.rotation[3])
             });
         });
     });

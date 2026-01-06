@@ -19,6 +19,7 @@ import {
     Mat4,
     Picker,
     Plane,
+    Quat,
     Ray,
     RenderTarget,
     Texture,
@@ -224,14 +225,23 @@ class Camera extends Element {
         t.goto({ distance }, dampingFactorFactor * controls.dampingFactor);
     }
 
-    setPose(position: Vec3, target: Vec3, dampingFactorFactor: number = 1) {
-        vec.sub2(target, position);
-        const l = vec.length();
-        const azim = Math.atan2(-vec.x / l, -vec.z / l) * math.RAD_TO_DEG;
-        const elev = Math.asin(vec.y / l) * math.RAD_TO_DEG;
+    setPose(position: Vec3, rotation: Quat, dampingFactorFactor: number = 1) {
+        // Convert rotation quaternion to azim/elev angles
+        const euler = new Vec3();
+        rotation.getEulerAngles(euler);
+        const azim = euler.y;
+        const elev = euler.x;
+        
+        // Calculate forward vector from rotation
+        const forward = new Vec3(0, 0, -1);
+        rotation.transformVector(forward, forward);
+        
+        // Use current distance to calculate focal point
+        const distance = this.distance * this.sceneRadius / this.fovFactor;
+        const target = position.clone().add(forward.mulScalar(distance));
+        
         this.setFocalPoint(target, dampingFactorFactor);
         this.setAzimElev(azim, elev, dampingFactorFactor);
-        this.setDistance(l / this.sceneRadius * this.fovFactor, dampingFactorFactor);
     }
 
     // transform the world space coordinate to normalized screen coordinate

@@ -1,4 +1,4 @@
-import { Color, Mat4, path, Texture, Vec3, Vec4 } from 'playcanvas';
+import { Color, Mat4, path, Quat, Texture, Vec3, Vec4 } from 'playcanvas';
 
 import { EditHistory } from './edit-history';
 import { SelectAllOp, SelectNoneOp, SelectInvertOp, SelectOp, HideSelectionOp, UnhideAllOp, DeleteSelectionOp, ResetOp, MultiOp, AddSplatOp } from './edit-ops';
@@ -218,7 +218,9 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
         const z = Math.cos(initialAzim * Math.PI / 180) * Math.cos(initialElev * Math.PI / 180);
         const zoom = initialZoom;
 
-        scene.camera.setPose(new Vec3(x * zoom, y * zoom, z * zoom), new Vec3(0, 0, 0));
+        const position = new Vec3(x * zoom, y * zoom, z * zoom);
+        const rotation = new Quat().setFromEulerAngles(initialElev, initialAzim, 0);
+        scene.camera.setPose(position, rotation);
     });
 
     // handle camera align events
@@ -694,15 +696,15 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
     events.function('camera.getPose', () => {
         const camera = scene.camera;
         const position = camera.entity.getPosition();
-        const focalPoint = camera.focalPoint;
+        const rotation = camera.entity.getRotation();
         return {
-            position: { x: position.x, y: position.y, z: position.z },
-            target: { x: focalPoint.x, y: focalPoint.y, z: focalPoint.z }
+            position: new Vec3(position.x, position.y, position.z),
+            rotation: rotation.clone()
         };
     });
 
-    events.on('camera.setPose', (pose: { position: Vec3, target: Vec3 }, speed = 1) => {
-        scene.camera.setPose(pose.position, pose.target, speed);
+    events.on('camera.setPose', (pose: { position: Vec3, rotation: Quat }, speed = 1) => {
+        scene.camera.setPose(pose.position, pose.rotation, speed);
     });
 
     // hack: fire events to initialize UI

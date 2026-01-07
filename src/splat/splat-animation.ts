@@ -1,5 +1,6 @@
 import { Mat4 } from 'playcanvas';
 import { BinaryGsplatAnimationData } from '../file/loaders/binary-gsplat';
+import { Events } from '../events';
 import { TransformPalette } from '../transform/transform-palette';
 import { Splat } from './splat';
 
@@ -17,14 +18,14 @@ export class SplatAnimation {
     numFrames: number;
     numBones: number;
     
-    currentTime: number = 0;
-    frameRate: number = 30;
-    isPlaying: boolean = false;
-    
     // Bone palette indices (one per bone, starting from palette index 1)
     bonePaletteIndices: Map<number, number> = new Map();
     
-    constructor(splat: Splat, animationData: BinaryGsplatAnimationData) {
+    // Timeline event handlers
+    private timelineTimeHandle: any = null;
+    private timelineFrameHandle: any = null;
+    
+    constructor(splat: Splat, animationData: BinaryGsplatAnimationData, events: Events) {
         this.splat = splat;
         this.animationData = animationData;
         this.numFrames = animationData.animation.numFrames;
@@ -42,8 +43,45 @@ export class SplatAnimation {
         // Map splats to their primary bone (highest weight)
         this.setupSplatBoneMapping();
         
-        // Set initial pose (frame 0)
-        this.setFrame(0);
+        // Helper function to update animation frame from timeline frame/time
+        const updateFromTimeline = (timelineValue: number) => {
+            // Convert timeline frames to time in seconds, then to animation frames
+            // This ensures animation plays at correct speed regardless of timeline length
+            const timelineFrameRate = events.invoke('timeline.frameRate') as number || 30;
+            const animationFrameRate = 30; // Assume animation is also 30 FPS (standard)
+            
+            // Convert timeline frames to seconds
+            const timeInSeconds = timelineValue / timelineFrameRate;
+            
+            // Convert seconds to animation frame (1:1 mapping if same frame rate)
+            // Clamp to animation bounds instead of looping
+            const frameIndex = Math.min(
+                Math.floor(timeInSeconds * animationFrameRate),
+                this.numFrames - 1
+            );
+            this.setFrame(frameIndex);
+        };
+        
+        // Listen to timeline.time (fires during playback)
+        this.timelineTimeHandle = events.on('timeline.time', (time: number) => {
+            updateFromTimeline(time);
+        });
+        
+        // Also listen to timeline.frame (fires when scrubbing/dragging timeline)
+        this.timelineFrameHandle = events.on('timeline.frame', (frame: number) => {
+            updateFromTimeline(frame);
+        });
+        
+        // Set initial frame based on current timeline position
+        const currentTimelineFrame = events.invoke('timeline.frame') as number || 0;
+        const timelineFrameRate = events.invoke('timeline.frameRate') as number || 30;
+        const animationFrameRate = 30; // Assume animation is also 30 FPS
+        const timeInSeconds = currentTimelineFrame / timelineFrameRate;
+        const initialFrame = Math.min(
+            Math.floor(timeInSeconds * animationFrameRate),
+            this.numFrames - 1
+        );
+        this.setFrame(initialFrame);
     }
     
     /**
@@ -81,19 +119,9 @@ export class SplatAnimation {
     }
     
     /**
-     * Update animation based on elapsed time
-     */
-    update(deltaTime: number) {
-        if (!this.isPlaying) return;
-        
-        this.currentTime += deltaTime;
-        const frameIndex = Math.floor(this.currentTime * this.frameRate) % this.numFrames;
-        this.setFrame(frameIndex);
-    }
-    
-    /**
      * Set animation to a specific frame
      * Copies bone matrices for that frame to the transform palette
+     * Called automatically by timeline.time event listener
      */
     setFrame(frameIndex: number) {
         if (frameIndex < 0 || frameIndex >= this.numFrames) return;
@@ -126,18 +154,18 @@ export class SplatAnimation {
         this.splat.updatePositions();
     }
     
-    play() {
-        this.isPlaying = true;
-    }
-    
-    pause() {
-        this.isPlaying = false;
-    }
-    
-    seek(time: number) {
-        this.currentTime = time;
-        const frameIndex = Math.floor(this.currentTime * this.frameRate) % this.numFrames;
-        this.setFrame(frameIndex);
+    /**
+     * Clean up event handlers
+     */
+    destroy() {
+        if (this.timelineTimeHandle) {
+            this.timelineTimeHandle.off();
+            this.timelineTimeHandle = null;
+        }
+        if (this.timelineFrameHandle) {
+            this.timelineFrameHandle.off();
+            this.timelineFrameHandle = null;
+        }
     }
 }
 

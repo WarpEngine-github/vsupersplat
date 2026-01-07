@@ -195,14 +195,14 @@ class Splat extends Element {
         });
     }
 
-    onUpdate(deltaTime: number) {
-        // Update animation if present
-        if (this.animation) {
-            this.animation.update(deltaTime);
-        }
-    }
 
     destroy() {
+        // Clean up animation
+        if (this.animation) {
+            this.animation.destroy();
+            this.animation = null;
+        }
+        
         super.destroy();
         this.entity.destroy();
         this.asset.registry.remove(this.asset);
@@ -343,9 +343,8 @@ class Splat extends Element {
         // Initialize animation now that scene is available
         const animationData = (this.asset as any).__animationData as BinaryGsplatAnimationData | undefined;
         if (animationData) {
-            this.animation = new SplatAnimation(this, animationData);
-            // Auto-play animation
-            this.animation.play();
+            this.animation = new SplatAnimation(this, animationData, this.scene.events);
+            // Animation is driven by timeline events, not auto-play
         }
     }
 

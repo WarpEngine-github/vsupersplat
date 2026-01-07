@@ -1,10 +1,10 @@
 import { BooleanInput, Button, ColorPicker, Container, Element, Label, SelectInput, SliderInput, TextAreaInput, TextInput } from '@playcanvas/pcui';
 
-import { Pose } from '../camera-poses';
+import { Pose } from '../core/camera-poses';
 import { Events } from '../events';
 import { localize } from './localization';
-import { PublishSettings, UserStatus } from '../publish';
-import { AnimTrack, ExperienceSettings } from '../splat-serialize';
+import { PublishSettings, UserStatus } from '../editor/publish';
+import { AnimTrack, ExperienceSettings } from '../splat/splat-serialize';
 import sceneExport from './svg/export.svg';
 
 const createSvg = (svgString: string, args = {}) => {

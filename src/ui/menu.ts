@@ -1,7 +1,7 @@
 import { Container, Element, Label } from '@playcanvas/pcui';
 
 import { Events } from '../events';
-import { recentFiles } from '../recent-files';
+import { recentFiles } from '../editor/recent-files';
 import { localize } from './localization';
 import { MenuPanel, MenuItem } from './menu-panel';
 import arrowSvg from './svg/arrow.svg';

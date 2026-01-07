@@ -8,7 +8,7 @@ import {
     ShaderMaterial
 } from 'playcanvas';
 
-import { Element, ElementType } from './element';
+import { Element, ElementType } from './core/element';
 import { vertexShader, fragmentShader } from './shaders/debug-shader';
 
 class Debug extends Element {

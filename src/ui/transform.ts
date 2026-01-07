@@ -3,7 +3,7 @@ import { Quat, Vec3 } from 'playcanvas';
 
 import { Events } from '../events';
 import { localize } from './localization';
-import { Pivot } from '../pivot';
+import { Pivot } from '../transform/pivot';
 
 const v = new Vec3();
 

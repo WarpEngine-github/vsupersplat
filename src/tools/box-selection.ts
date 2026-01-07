@@ -1,10 +1,10 @@
 import { Button, Container, NumericInput } from '@playcanvas/pcui';
 import { TranslateGizmo, Vec3 } from 'playcanvas';
 
-import { BoxShape } from '../box-shape';
+import { BoxShape } from '../shapes/box-shape';
 import { Events } from '../events';
-import { Scene } from '../scene';
-import { Splat } from '../splat';
+import { Scene } from '../core/scene';
+import { Splat } from '../splat/splat';
 
 class BoxSelection {
     activate: () => void;

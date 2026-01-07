@@ -1,11 +1,11 @@
 import { Container, Label, NumericInput } from '@playcanvas/pcui';
 import { Entity, Mat4, Quat, TranslateGizmo, Vec3 } from 'playcanvas';
 
-import { EntityTransformOp } from '../edit-ops';
+import { EntityTransformOp } from '../editor/edit-ops';
 import { Events } from '../events';
-import { Scene } from '../scene';
-import { Splat } from '../splat';
-import { Transform } from '../transform';
+import { Scene } from '../core/scene';
+import { Splat } from '../splat/splat';
+import { Transform } from '../transform/transform';
 import { localize } from '../ui/localization';
 
 const mat = new Mat4();

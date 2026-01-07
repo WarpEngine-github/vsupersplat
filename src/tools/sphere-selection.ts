@@ -2,9 +2,9 @@ import { Button, Container, NumericInput } from '@playcanvas/pcui';
 import { TranslateGizmo, Vec3 } from 'playcanvas';
 
 import { Events } from '../events';
-import { Scene } from '../scene';
-import { SphereShape } from '../sphere-shape';
-import { Splat } from '../splat';
+import { Scene } from '../core/scene';
+import { SphereShape } from '../shapes/sphere-shape';
+import { Splat } from '../splat/splat';
 
 class SphereSelection {
     activate: () => void;

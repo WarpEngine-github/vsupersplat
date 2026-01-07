@@ -1,7 +1,7 @@
 import { BooleanInput, Button, Container, Element, Label, SelectInput, VectorInput } from '@playcanvas/pcui';
 
 import { Events } from '../events';
-import { VideoSettings } from '../render';
+import { VideoSettings } from '../core/render';
 import { localize } from './localization';
 import sceneExport from './svg/export.svg';
 

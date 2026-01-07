@@ -1,8 +1,8 @@
 import { Entity, GraphicsDevice, TransformGizmo } from 'playcanvas';
 
 import { Events } from '../events';
-import { Pivot } from '../pivot';
-import { Scene } from '../scene';
+import { Pivot } from '../transform/pivot';
+import { Scene } from '../core/scene';
 
 class TransformTool {
     activate: () => void;

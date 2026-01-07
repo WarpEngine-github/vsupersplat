@@ -1,10 +1,10 @@
 import { BooleanInput, Container, Label, Panel, SelectInput } from '@playcanvas/pcui';
 
 import { Events } from '../events';
-import { Splat } from '../splat';
+import { Splat } from '../splat/splat';
 import { rgb2hsv } from './color';
 import { Histogram } from './histogram';
-import { State } from '../splat-state';
+import { State } from '../splat/splat-state';
 import { localize, formatInteger } from './localization';
 
 const SH_C0 = 0.28209479177387814;

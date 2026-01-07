@@ -41,7 +41,8 @@ export class SplatAnimation {
         }
         
         // Map splats to their primary bone (highest weight)
-        this.setupSplatBoneMapping();
+        // TEMPORARILY DISABLED: Comment out the line below to disable bone mapping (keeps transform indices at 0)
+        // this.setupSplatBoneMapping();
         
         // Helper function to update animation frame from timeline frame/time
         const updateFromTimeline = (timelineValue: number) => {
@@ -126,6 +127,9 @@ export class SplatAnimation {
     setFrame(frameIndex: number) {
         if (frameIndex < 0 || frameIndex >= this.numFrames) return;
         
+        // TEMPORARILY DISABLED: Comment out the return below to re-enable animations
+        return;
+        
         const { data } = this.animationData.animation;
         const FLOATS_PER_BONE = 16; // 4×4 matrix
         const frameSize = this.numBones * FLOATS_PER_BONE;
@@ -146,7 +150,7 @@ export class SplatAnimation {
             
             const paletteIndex = this.bonePaletteIndices.get(boneIdx);
             if (paletteIndex !== undefined) {
-                this.splat.transformPalette.setTransform(paletteIndex, mat);
+                //this.splat.transformPalette.setTransform(paletteIndex, mat);
             }
         }
         

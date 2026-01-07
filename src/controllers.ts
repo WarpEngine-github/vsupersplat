@@ -67,7 +67,7 @@ class PointerController {
             
             // Calculate pan distance based on camera distance from origin
             const distance = currentPos.length() || 1;
-            const panScale = distance * 0.001;
+            const panScale = distance * (camera.scene.config.controls.panSensitivity / 1000);
             
             // Pan in screen space
             const panRight = right.mulScalar(-dx * panScale);
@@ -192,6 +192,32 @@ class PointerController {
             }
         };
 
+        const wheel = (event: WheelEvent) => {
+            // Prevent default scrolling behavior
+            event.preventDefault();
+            
+            // Move camera forward/backward along its forward direction
+            const currentPos = camera.position;
+            const currentRot = camera.rotation;
+            
+            // Get camera's forward vector
+            const forward = new Vec3(0, 0, -1);
+            currentRot.transformVector(forward, forward);
+            
+            // Calculate movement distance based on scroll delta
+            // Use panSensitivity as a base multiplier, scaled appropriately for scroll wheel
+            // deltaY is typically ~100 per scroll tick, so we scale panSensitivity accordingly
+            const scrollSpeed = (camera.scene.config.controls.panSensitivity / 1000) * 10; // Scale for scroll wheel
+            const delta = event.deltaY; // Positive = scroll down (move back), Negative = scroll up (move forward)
+            const moveDistance = -delta * scrollSpeed; // Negative because forward is -Z
+            
+            // Move camera along forward vector
+            const moveVector = forward.mulScalar(moveDistance);
+            const newPos = currentPos.clone().add(moveVector);
+            
+            camera.setPosition(newPos);
+        };
+
         // key state
         const keys: any = {
             ArrowUp: 0,
@@ -262,6 +288,7 @@ class PointerController {
         wrap(target, 'pointerup', pointerup);
         wrap(target, 'pointermove', pointermove);
         wrap(target, 'dblclick', dblclick);
+        wrap(target, 'wheel', wheel, { passive: false });
         wrap(document, 'keydown', keydown);
         wrap(document, 'keyup', keyup);
 

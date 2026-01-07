@@ -32,7 +32,8 @@ const sceneConfig = {
         maxPolarAngle: Math.PI,
         initialAzim: -45,
         initialElev: -10,
-        rotationSensitivity: 10.0  // degrees per pixel
+        rotationSensitivity: 10.0,  // degrees per pixel
+        panSensitivity: 5.0  // pan speed multiplier (scaled by 1000, actual value is panSensitivity / 1000)
     },
     debug: {
         showBound: false

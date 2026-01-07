@@ -244,6 +244,28 @@ class ViewPanel extends Container {
         rotationSensitivityRow.append(rotationSensitivityLabel);
         rotationSensitivityRow.append(rotationSensitivitySlider);
 
+        // pan sensitivity
+
+        const panSensitivityRow = new Container({
+            class: 'view-panel-row'
+        });
+
+        const panSensitivityLabel = new Label({
+            text: localize('panel.view-options.pan-sensitivity') || 'Pan Sensitivity',
+            class: 'view-panel-row-label'
+        });
+
+        const panSensitivitySlider = new SliderInput({
+            class: 'view-panel-row-slider',
+            min: 0.1,
+            max: 10.0,
+            precision: 1,
+            value: 5.0
+        });
+
+        panSensitivityRow.append(panSensitivityLabel);
+        panSensitivityRow.append(panSensitivitySlider);
+
         // high precision (render to float)
 
         const highPrecisionRow = new Container({
@@ -332,6 +354,7 @@ class ViewPanel extends Container {
         this.append(centersSizeRow);
         this.append(cameraFlySpeedRow);
         this.append(rotationSensitivityRow);
+        this.append(panSensitivityRow);
         this.append(highPrecisionRow);
         this.append(outlineSelectionRow);
         this.append(showGridRow);
@@ -404,6 +427,18 @@ class ViewPanel extends Container {
 
         rotationSensitivitySlider.on('change', (value: number) => {
             events.fire('camera.setRotationSensitivity', value);
+        });
+
+        // pan sensitivity
+
+        events.on('camera.panSensitivity', (value: number) => {
+            if (value !== undefined && value !== null) {
+                panSensitivitySlider.value = value;
+            }
+        });
+
+        panSensitivitySlider.on('change', (value: number) => {
+            events.fire('camera.setPanSensitivity', value);
         });
 
         // outline selection

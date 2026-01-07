@@ -668,6 +668,17 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
         }
     });
 
+    events.function('camera.panSensitivity', () => {
+        return scene.config.controls.panSensitivity;
+    });
+
+    events.on('camera.setPanSensitivity', (value: number) => {
+        if (value !== scene.config.controls.panSensitivity) {
+            scene.config.controls.panSensitivity = value;
+            events.fire('camera.panSensitivity', value);
+        }
+    });
+
     // outline selection
 
     let outlineSelection = false;
@@ -725,6 +736,7 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
     events.fire('camera.overlay', cameraOverlay);
     events.fire('view.bands', viewBands);
     events.fire('camera.rotationSensitivity', scene.config.controls.rotationSensitivity);
+    events.fire('camera.panSensitivity', scene.config.controls.panSensitivity);
 
     // doc serialization
     events.function('docSerialize.view', () => {

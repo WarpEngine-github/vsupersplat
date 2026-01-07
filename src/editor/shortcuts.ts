@@ -19,6 +19,11 @@ class Shortcuts {
             // skip keys in input fields
             if (!capture && e.target !== document.body) return;
 
+            // Skip movement keys (WASD/Arrows) - let controllers handle them
+            const movementKeys = ['w', 'W', 'a', 'A', 's', 'S', 'd', 'D', 
+                                  'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+            if (movementKeys.includes(e.key)) return;
+
             for (let i = 0; i < shortcuts.length; i++) {
                 const shortcut  = shortcuts[i];
                 const options = shortcut.options;
@@ -27,9 +32,6 @@ class Shortcuts {
                     ((options.capture ?? false) === capture) &&
                     !!options.ctrl === !!(e.ctrlKey || e.metaKey) &&
                     !!options.shift === !!e.shiftKey) {
-
-                    e.stopPropagation();
-                    e.preventDefault();
 
                     // handle sticky shortcuts
                     if (options.sticky) {
@@ -41,9 +43,13 @@ class Shortcuts {
                             return;
                         }
                     } else {
-                        // ignore up events on non-sticky shortcuts
+                        // ignore up events on non-sticky shortcuts - don't stop propagation
                         if (!down) return;
                     }
+
+                    // Only stop propagation if we're actually handling the event
+                    e.stopPropagation();
+                    e.preventDefault();
 
                     if (shortcuts[i].options.event) {
                         events.fire(shortcuts[i].options.event);

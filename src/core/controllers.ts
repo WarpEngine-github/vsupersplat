@@ -150,7 +150,7 @@ class PointerController {
 
                 // right button can be used to orbit with ctrl key
                 const mod = pressedButton === 2 ?
-                    (event.shiftKey || event.ctrlKey ? 'orbit' : null) :
+                    (event.ctrlKey ? 'orbit' : null) :
                     null;
 
                 if (mod === 'orbit' || (mod === null && pressedButton === 0)) {
@@ -234,15 +234,40 @@ class PointerController {
             D: 0   // D key (uppercase)
         };
 
+        const getSpeedMultiplier = (event: KeyboardEvent) => {
+            return event.shiftKey ? 10 : (event.ctrlKey || event.metaKey || event.altKey ? 0.1 : 1);
+        };
+
         const keydown = (event: KeyboardEvent) => {
+            const multiplier = getSpeedMultiplier(event);
             if (keys.hasOwnProperty(event.key) && event.target === document.body) {
-                keys[event.key] = event.shiftKey ? 10 : (event.ctrlKey || event.metaKey || event.altKey ? 0.1 : 1);
+                keys[event.key] = multiplier;
+            }
+            // Also handle case variant - Shift changes 'w' to 'W'
+            const keyLower = event.key.toLowerCase();
+            const keyUpper = event.key.toUpperCase();
+            if (keyLower !== event.key && keys.hasOwnProperty(keyLower) && event.target === document.body) {
+                keys[keyLower] = multiplier;
+            }
+            if (keyUpper !== event.key && keys.hasOwnProperty(keyUpper) && event.target === document.body) {
+                keys[keyUpper] = multiplier;
             }
         };
 
         const keyup = (event: KeyboardEvent) => {
+            // Don't check target - always reset keys when released, regardless of focus
+            // Handle exact match
             if (keys.hasOwnProperty(event.key)) {
                 keys[event.key] = 0;
+            }
+            // Also handle case variant - Shift changes 'w' to 'W', so reset both
+            const keyLower = event.key.toLowerCase();
+            const keyUpper = event.key.toUpperCase();
+            if (keyLower !== event.key && keys.hasOwnProperty(keyLower)) {
+                keys[keyLower] = 0;
+            }
+            if (keyUpper !== event.key && keys.hasOwnProperty(keyUpper)) {
+                keys[keyUpper] = 0;
             }
         };
 
@@ -290,7 +315,8 @@ class PointerController {
         wrap(target, 'dblclick', dblclick);
         wrap(target, 'wheel', wheel, { passive: false });
         wrap(document, 'keydown', keydown);
-        wrap(document, 'keyup', keyup);
+        // Listen in capture phase to ensure we get keyup events before shortcuts can stop propagation
+        wrap(document, 'keyup', keyup, true);
 
         this.destroy = destroy;
     }

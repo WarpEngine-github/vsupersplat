@@ -32,7 +32,6 @@ import { PointerController } from './controllers';
 import { Element, ElementType } from './element';
 import { Serializer } from '../serializer';
 import { Splat } from '../splat/splat';
-import { TweenValue } from '../utils/tween-value';
 
 // calculate the forward vector given azimuth and elevation
 const calcForwardVec = (result: Vec3, azim: number, elev: number) => {
@@ -62,8 +61,8 @@ const mod = (n: number, m: number) => ((n % m) + m) % m;
 class Camera extends Element {
     controller: PointerController;
     entity: Entity;
-    positionTween = new TweenValue({ x: 0, y: 0, z: 1 });
-    rotationTween = new TweenValue({ x: 0, y: 0, z: 0, w: 1 });
+    private _position = new Vec3(0, 0, 1);
+    private _rotation = new Quat(0, 0, 0, 1);
 
     minElev = -90;
     maxElev = 90;
@@ -170,22 +169,20 @@ class Camera extends Element {
 
     // position
     get position() {
-        const t = this.positionTween.value;
-        return new Vec3(t.x, t.y, t.z);
+        return this._position.clone();
     }
 
     // rotation
     get rotation() {
-        const t = this.rotationTween.value;
-        return new Quat(t.x, t.y, t.z, t.w);
+        return this._rotation.clone();
     }
 
     setPosition(position: Vec3, dampingFactorFactor: number = 1) {
-        this.positionTween.goto(position, dampingFactorFactor * this.scene.config.controls.dampingFactor);
+        this._position.copy(position);
     }
 
     setRotation(rotation: Quat, dampingFactorFactor: number = 1) {
-        this.rotationTween.goto({ x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w }, dampingFactorFactor * this.scene.config.controls.dampingFactor);
+        this._rotation.copy(rotation);
         // return to perspective mode on rotation
         this.ortho = false;
     }
@@ -418,18 +415,9 @@ class Camera extends Element {
         // controller update
         this.controller.update(deltaTime);
 
-        // update underlying values
-        this.positionTween.update(deltaTime);
-        this.rotationTween.update(deltaTime);
-
-        const pos = this.positionTween.value;
-        const rot = this.rotationTween.value;
-
-        cameraPosition.set(pos.x, pos.y, pos.z);
-        this.entity.setLocalPosition(cameraPosition);
-        
-        const rotQuat = new Quat(rot.x, rot.y, rot.z, rot.w);
-        this.entity.setLocalRotation(rotQuat);
+        // update entity transform directly
+        this.entity.setLocalPosition(this._position);
+        this.entity.setLocalRotation(this._rotation);
 
         this.fitClippingPlanes(this.entity.getLocalPosition(), this.entity.forward);
 

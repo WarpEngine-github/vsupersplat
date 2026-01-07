@@ -130,6 +130,11 @@ const isLcc = (filenames: string[]) => {
     return count('.lcc') === 1;
 };
 
+// Binary format contains header.json and splats.bin
+const isBinaryGsplat = (filenames: string[]) => {
+    return filenames.some(f => f === 'header.json' || f.endsWith('header.json'));
+};
+
 type ImportFile = {
     filename: string;
     url?: string;
@@ -285,6 +290,44 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
         return model;
     };
 
+    const importBinaryGsplat = async (files: ImportFile[], animationFrame: boolean) => {
+        // Find header.json file
+        const headerIdx = files.findIndex(f => f.filename.toLowerCase() === 'header.json' || f.filename.toLowerCase().endsWith('header.json'));
+        if (headerIdx < 0) {
+            throw new Error('header.json not found in binary format files');
+        }
+
+        const urls = files.map(file => (file.contents && URL.createObjectURL(file.contents)) ?? file.url ?? file.filename);
+
+        // Create mapFile function to find associated .bin files
+        const mapFile = (name: string): AssetSource | null => {
+            const lowerName = name.toLowerCase();
+            const idx = files.findIndex(f => f.filename.toLowerCase() === lowerName || f.filename.toLowerCase().endsWith(lowerName));
+            if (idx >= 0) {
+                return {
+                    filename: files[idx].filename,
+                    url: urls[idx],
+                    contents: files[idx].contents,
+                    animationFrame
+                };
+            }
+            return null;
+        };
+
+        const model = await scene.assetLoader.load({
+            filename: files[headerIdx].filename,
+            url: urls[headerIdx],
+            animationFrame,
+            mapFile: mapFile
+        });
+
+        urls.forEach(url => URL.revokeObjectURL(url));
+
+        scene.add(model);
+
+        return model;
+    };
+
     const importLcc = async (files: ImportFile[], animationFrame: boolean) => {
         try {
             const meta = files.findIndex(f => f.filename.toLowerCase().endsWith('.lcc'));
@@ -336,7 +379,10 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
         } else if (isSog(filenames)) {
             // import unbundled sog model
             result.push(await importSog(files, animationFrame));
-        }  else if (isLcc(filenames)) {
+        } else if (isBinaryGsplat(filenames)) {
+            // import binary format (header.json + splats.bin)
+            result.push(await importBinaryGsplat(files, animationFrame));
+        } else if (isLcc(filenames)) {
             // import lcc files
             result.push(await importLcc(files, animationFrame));
         } else {

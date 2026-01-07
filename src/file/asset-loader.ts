@@ -2,6 +2,7 @@ import { AppBase, Asset, GSplatData, GSplatResource, Vec3 } from 'playcanvas';
 
 import { Events } from '../events';
 import { AssetSource } from './loaders/asset-source';
+import { loadBinaryGsplat } from './loaders/binary-gsplat';
 import { loadGsplat } from './loaders/gsplat';
 import { loadLcc } from './loaders/lcc';
 import { loadSplat } from './loaders/splat';
@@ -49,6 +50,9 @@ class AssetLoader {
             } else if (filename.endsWith('.lcc')) {
                 asset = wrap(await loadLcc(assetSource));
                 orientation = lccOrientation;
+            } else if (filename === 'header.json' || filename.endsWith('header.json')) {
+                // Binary format: header.json + splats.bin
+                asset = wrap(await loadBinaryGsplat(assetSource));
             } else {
                 asset = await loadGsplat(this.app.assets, assetSource);
             }

@@ -1,0 +1,184 @@
+import { GSplatData } from 'playcanvas';
+
+import { AssetSource, createReadSource } from './asset-source';
+
+/**
+ * Asset header structure from header.json
+ */
+interface AssetHeader {
+    numSplats: number;
+    numBones: number;
+    numFrames: number;
+    bounds: {
+        min: number[];
+        max: number[];
+    };
+}
+
+/**
+ * Load binary Gaussian splat format (header.json + splats.bin)
+ * 
+ * Binary format (48 bytes per splat):
+ * - Position: 3 x float32 (12 bytes)
+ * - Scale: 3 x float32 (12 bytes) - linear scales
+ * - Rotation: 4 x float32 (16 bytes) - quaternion (x, y, z, w)
+ * - Color: 4 x uint8 (4 bytes) - RGBA
+ * - Opacity: 1 x float32 (4 bytes) - linear opacity [0, 1]
+ */
+const loadBinaryGsplat = async (assetSource: AssetSource): Promise<GSplatData> => {
+    // Helper to get base path from URL or filename
+    const getBasePath = () => {
+        if (assetSource.url) {
+            // Remove filename from URL to get directory
+            const url = new URL(assetSource.url, window.location.href);
+            return url.pathname.substring(0, url.pathname.lastIndexOf('/'));
+        }
+        if (assetSource.filename) {
+            // Assume same directory as filename
+            const path = assetSource.filename.substring(0, assetSource.filename.lastIndexOf('/'));
+            return path || '/gs/assets/converted';
+        }
+        return '/gs/assets/converted';
+    };
+
+    const basePath = getBasePath();
+    
+    // Helper to fetch files
+    const fetchFile = async (filename: string): Promise<ArrayBuffer> => {
+        // Check if we have a mapFile function (for drag-drop scenarios)
+        if (assetSource.mapFile) {
+            const fileSource = assetSource.mapFile(filename);
+            if (fileSource) {
+                const source = await createReadSource(fileSource);
+                return await source.arrayBuffer();
+            }
+            // If mapFile doesn't find it, try URL fallback
+        }
+        
+        // Fetch from URL (either provided URL or constructed from basePath)
+        let url: string;
+        if (assetSource.url && filename === 'header.json') {
+            // Use the provided URL directly for header.json
+            url = assetSource.url;
+        } else {
+            // Construct URL from basePath
+            url = `${basePath}/${filename}`;
+        }
+        
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Failed to load ${filename}: ${response.statusText}`);
+        }
+        return await response.arrayBuffer();
+    };
+
+    // Step 1: Load header.json
+    const headerBuffer = await fetchFile('header.json');
+    const headerText = new TextDecoder().decode(headerBuffer);
+    const header: AssetHeader = JSON.parse(headerText);
+    
+    const numSplats = header.numSplats;
+    console.log(`Loading binary splat: ${numSplats} splats from ${basePath}`);
+
+    // Step 2: Load splats.bin
+    const splatsBuffer = await fetchFile('splats.bin');
+    const SPLAT_STRIDE = 48; // bytes per splat
+    
+    if (splatsBuffer.byteLength !== numSplats * SPLAT_STRIDE) {
+        console.warn(`Splat buffer size mismatch! Expected ${numSplats * SPLAT_STRIDE}, got ${splatsBuffer.byteLength}`);
+    }
+
+    const splatData = new DataView(splatsBuffer);
+
+    // Allocate typed arrays for PlayCanvas GSplatData format
+    const storage_x = new Float32Array(numSplats);
+    const storage_y = new Float32Array(numSplats);
+    const storage_z = new Float32Array(numSplats);
+    const storage_scale_0 = new Float32Array(numSplats);
+    const storage_scale_1 = new Float32Array(numSplats);
+    const storage_scale_2 = new Float32Array(numSplats);
+    const storage_rot_0 = new Float32Array(numSplats);
+    const storage_rot_1 = new Float32Array(numSplats);
+    const storage_rot_2 = new Float32Array(numSplats);
+    const storage_rot_3 = new Float32Array(numSplats);
+    const storage_f_dc_0 = new Float32Array(numSplats);
+    const storage_f_dc_1 = new Float32Array(numSplats);
+    const storage_f_dc_2 = new Float32Array(numSplats);
+    const storage_opacity = new Float32Array(numSplats);
+    const storage_state = new Uint8Array(numSplats);
+
+    // Spherical harmonics constant for color conversion
+    const SH_C0 = 0.28209479177387814;
+    const littleEndian = true;
+
+    // Step 3: Parse binary data and convert to PlayCanvas format
+    let offset = 0;
+    for (let i = 0; i < numSplats; i++) {
+        // Position (12 bytes) - direct copy
+        storage_x[i] = splatData.getFloat32(offset + 0, littleEndian);
+        storage_y[i] = splatData.getFloat32(offset + 4, littleEndian);
+        storage_z[i] = splatData.getFloat32(offset + 8, littleEndian);
+        offset += 12;
+
+        // Scale (12 bytes) - convert linear to log scale
+        const scaleX = splatData.getFloat32(offset + 0, littleEndian);
+        const scaleY = splatData.getFloat32(offset + 4, littleEndian);
+        const scaleZ = splatData.getFloat32(offset + 8, littleEndian);
+        storage_scale_0[i] = Math.log(Math.max(scaleX, 1e-8)); // Clamp to avoid log(0)
+        storage_scale_1[i] = Math.log(Math.max(scaleY, 1e-8));
+        storage_scale_2[i] = Math.log(Math.max(scaleZ, 1e-8));
+        offset += 12;
+
+        // Rotation quaternion (16 bytes) - direct copy (already normalized)
+        storage_rot_0[i] = splatData.getFloat32(offset + 0, littleEndian);
+        storage_rot_1[i] = splatData.getFloat32(offset + 4, littleEndian);
+        storage_rot_2[i] = splatData.getFloat32(offset + 8, littleEndian);
+        storage_rot_3[i] = splatData.getFloat32(offset + 12, littleEndian);
+        offset += 16;
+
+        // Color RGBA (4 bytes) - convert uint8 to spherical harmonics
+        const r = splatData.getUint8(offset + 0);
+        const g = splatData.getUint8(offset + 1);
+        const b = splatData.getUint8(offset + 2);
+        // Convert RGB [0-255] to spherical harmonics f_dc_0/1/2
+        // Formula: (value / 255 - 0.5) / SH_C0
+        storage_f_dc_0[i] = (r / 255 - 0.5) / SH_C0;
+        storage_f_dc_1[i] = (g / 255 - 0.5) / SH_C0;
+        storage_f_dc_2[i] = (b / 255 - 0.5) / SH_C0;
+        offset += 4;
+
+        // Opacity (4 bytes) - convert linear [0,1] to log opacity
+        const opacity = splatData.getFloat32(offset + 0, littleEndian);
+        // Clamp opacity to valid range and convert to log space
+        // Formula: -log(1 / opacity - 1) for sigmoid inverse
+        const clampedOpacity = Math.max(0.0001, Math.min(0.9999, opacity));
+        storage_opacity[i] = -Math.log(1 / clampedOpacity - 1);
+        offset += 4;
+    }
+
+    // Step 4: Create GSplatData object
+    return new GSplatData([{
+        name: 'vertex',
+        count: numSplats,
+        properties: [
+            { type: 'float', name: 'x', storage: storage_x, byteSize: 4 },
+            { type: 'float', name: 'y', storage: storage_y, byteSize: 4 },
+            { type: 'float', name: 'z', storage: storage_z, byteSize: 4 },
+            { type: 'float', name: 'opacity', storage: storage_opacity, byteSize: 4 },
+            { type: 'float', name: 'rot_0', storage: storage_rot_0, byteSize: 4 },
+            { type: 'float', name: 'rot_1', storage: storage_rot_1, byteSize: 4 },
+            { type: 'float', name: 'rot_2', storage: storage_rot_2, byteSize: 4 },
+            { type: 'float', name: 'rot_3', storage: storage_rot_3, byteSize: 4 },
+            { type: 'float', name: 'f_dc_0', storage: storage_f_dc_0, byteSize: 4 },
+            { type: 'float', name: 'f_dc_1', storage: storage_f_dc_1, byteSize: 4 },
+            { type: 'float', name: 'f_dc_2', storage: storage_f_dc_2, byteSize: 4 },
+            { type: 'float', name: 'scale_0', storage: storage_scale_0, byteSize: 4 },
+            { type: 'float', name: 'scale_1', storage: storage_scale_1, byteSize: 4 },
+            { type: 'float', name: 'scale_2', storage: storage_scale_2, byteSize: 4 },
+            { type: 'float', name: 'state', storage: storage_state, byteSize: 4 }
+        ]
+    }]);
+};
+
+export { loadBinaryGsplat };
+

@@ -28,6 +28,8 @@ import { RotateTool } from './tools/rotate-tool';
 import { ScaleTool } from './tools/scale-tool';
 import { SphereSelection } from './tools/sphere-selection';
 import { ToolManager } from './tools/tool-manager';
+import { SphereShape } from './shapes/sphere-shape';
+import { SplatLoader } from './gs/engine/SplatLoader';
 import { registerTransformHandlerEvents } from './transform/transform-handler';
 import { EditorUI } from './ui/editor';
 import { localizeInit } from './ui/localization';
@@ -100,6 +102,18 @@ const initShortcuts = (events: Events) => {
     shortcuts.register(['Z', 'z'], { event: 'edit.redo', ctrl: true, shift: true, capture: true });
     shortcuts.register(['M', 'm'], { event: 'camera.toggleMode' });
     shortcuts.register([' '], { event: 'camera.toggleOverlay' });
+    shortcuts.register(['K', 'k'], {
+        ctrl: true,
+        func: () => {
+            const scene = window.scene;
+            if (!scene) return;
+
+            const blob = new SphereShape();
+            blob.pivot.setLocalPosition(0, 0, -2); // In front of camera
+            scene.add(blob); // Add to scene first so this.scene is set
+            blob.radius = 0.5; // Small test blob (now safe because scene is set)
+        }
+    });
 
     return shortcuts;
 };

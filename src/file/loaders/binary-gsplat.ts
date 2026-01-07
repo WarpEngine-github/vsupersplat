@@ -16,6 +16,30 @@ interface AssetHeader {
 }
 
 /**
+ * Animation data structure
+ */
+interface BinaryGsplatAnimationData {
+    weights: {
+        indices: Uint16Array;  // 4 bone indices per splat
+        weights: Float32Array;  // 4 bone weights per splat
+    };
+    animation: {
+        data: Float32Array;     // All frames: numFrames × numBones × 16 floats
+        numFrames: number;
+        numBones: number;
+    };
+}
+
+/**
+ * Result structure containing both GSplatData and optional animation data
+ */
+interface BinaryGsplatResult {
+    gsplatData: GSplatData;
+    animationData?: BinaryGsplatAnimationData;
+    header: AssetHeader;
+}
+
+/**
  * Load binary Gaussian splat format (header.json + splats.bin)
  * 
  * Binary format (48 bytes per splat):
@@ -25,7 +49,7 @@ interface AssetHeader {
  * - Color: 4 x uint8 (4 bytes) - RGBA
  * - Opacity: 1 x float32 (4 bytes) - linear opacity [0, 1]
  */
-const loadBinaryGsplat = async (assetSource: AssetSource): Promise<GSplatData> => {
+const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatResult> => {
     // Helper to get base path from URL or filename
     const getBasePath = () => {
         if (assetSource.url) {
@@ -157,7 +181,7 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<GSplatData> =
     }
 
     // Step 4: Create GSplatData object
-    return new GSplatData([{
+    const gsplatData = new GSplatData([{
         name: 'vertex',
         count: numSplats,
         properties: [
@@ -178,7 +202,76 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<GSplatData> =
             { type: 'float', name: 'state', storage: storage_state, byteSize: 4 }
         ]
     }]);
+
+    // Step 5: Load animation data if available
+    let animationData: BinaryGsplatAnimationData | undefined;
+    
+    if (header.numBones > 0 && header.numFrames > 0) {
+        try {
+            // Load weights.bin (24 bytes per splat: 4×uint16 indices + 4×float32 weights)
+            const weightsBuffer = await fetchFile('weights.bin');
+            const WEIGHT_STRIDE = 24; // bytes per splat
+            
+            if (weightsBuffer.byteLength !== numSplats * WEIGHT_STRIDE) {
+                console.warn(`Weights buffer size mismatch! Expected ${numSplats * WEIGHT_STRIDE}, got ${weightsBuffer.byteLength}`);
+            }
+
+            const weightsData = new DataView(weightsBuffer);
+            const boneIndices = new Uint16Array(numSplats * 4);
+            const boneWeights = new Float32Array(numSplats * 4);
+            
+            let weightsOffset = 0;
+            for (let i = 0; i < numSplats; i++) {
+                // Bone indices (8 bytes: 4×uint16)
+                for (let j = 0; j < 4; j++) {
+                    boneIndices[i * 4 + j] = weightsData.getUint16(weightsOffset + j * 2, littleEndian);
+                }
+                weightsOffset += 8;
+                
+                // Bone weights (16 bytes: 4×float32)
+                for (let j = 0; j < 4; j++) {
+                    boneWeights[i * 4 + j] = weightsData.getFloat32(weightsOffset + j * 4, littleEndian);
+                }
+                weightsOffset += 16;
+            }
+
+            // Load animation.bin (16 floats × numBones × numFrames)
+            const animationBuffer = await fetchFile('animation.bin');
+            const FLOATS_PER_BONE = 16; // 4×4 matrix
+            const expectedSize = header.numFrames * header.numBones * FLOATS_PER_BONE * 4; // 4 bytes per float
+            
+            if (animationBuffer.byteLength !== expectedSize) {
+                console.warn(`Animation buffer size mismatch! Expected ${expectedSize}, got ${animationBuffer.byteLength}`);
+            }
+
+            const animationArray = new Float32Array(animationBuffer);
+
+            animationData = {
+                weights: {
+                    indices: boneIndices,
+                    weights: boneWeights
+                },
+                animation: {
+                    data: animationArray,
+                    numFrames: header.numFrames,
+                    numBones: header.numBones
+                }
+            };
+
+            console.log(`Loaded animation: ${header.numFrames} frames, ${header.numBones} bones`);
+        } catch (error) {
+            console.warn('Failed to load animation data:', error);
+            // Continue without animation
+        }
+    }
+
+    return {
+        gsplatData,
+        animationData,
+        header
+    };
 };
 
 export { loadBinaryGsplat };
+export type { BinaryGsplatAnimationData, BinaryGsplatResult };
 

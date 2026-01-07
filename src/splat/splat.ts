@@ -26,6 +26,8 @@ import { vertexShader, fragmentShader, gsplatCenter } from '../shaders/splat-sha
 import { State } from './splat-state';
 import { Transform } from '../transform/transform';
 import { TransformPalette } from '../transform/transform-palette';
+import { SplatAnimation } from './splat-animation';
+import { BinaryGsplatAnimationData } from '../file/loaders/binary-gsplat';
 
 const vec = new Vec3();
 const veca = new Vec3();
@@ -79,6 +81,7 @@ class Splat extends Element {
     measureSelection = -1;
 
     rebuildMaterial: (bands: number) => void;
+    animation: SplatAnimation | null = null;
 
     constructor(asset: Asset, orientation: Vec3) {
         super(ElementType.splat);
@@ -190,6 +193,13 @@ class Splat extends Element {
         instance.sorter.on('updated', () => {
             this.changedCounter++;
         });
+    }
+
+    onUpdate(deltaTime: number) {
+        // Update animation if present
+        if (this.animation) {
+            this.animation.update(deltaTime);
+        }
     }
 
     destroy() {
@@ -329,6 +339,14 @@ class Splat extends Element {
 
         // we must update state in case the state data was loaded from ply
         this.updateState();
+
+        // Initialize animation now that scene is available
+        const animationData = (this.asset as any).__animationData as BinaryGsplatAnimationData | undefined;
+        if (animationData) {
+            this.animation = new SplatAnimation(this, animationData);
+            // Auto-play animation
+            this.animation.play();
+        }
     }
 
     remove() {

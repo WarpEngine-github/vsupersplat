@@ -52,15 +52,33 @@ interface BinaryGsplatResult {
 const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatResult> => {
     // Helper to get base path from URL or filename
     const getBasePath = () => {
-        if (assetSource.url) {
-            // Remove filename from URL to get directory
-            const url = new URL(assetSource.url, window.location.href);
-            return url.pathname.substring(0, url.pathname.lastIndexOf('/'));
-        }
+        // Prefer filename over URL for path extraction (more reliable)
         if (assetSource.filename) {
-            // Assume same directory as filename
-            const path = assetSource.filename.substring(0, assetSource.filename.lastIndexOf('/'));
-            return path || '/gs/assets/converted';
+            const lastSlash = assetSource.filename.lastIndexOf('/');
+            if (lastSlash >= 0) {
+                return assetSource.filename.substring(0, lastSlash);
+            }
+            // If filename has no path, try to extract from URL
+        }
+        if (assetSource.url) {
+            // Skip blob URLs (object URLs) - they don't have meaningful paths
+            if (assetSource.url.startsWith('blob:')) {
+                // For blob URLs, use filename if available, otherwise default
+                return assetSource.filename ? 
+                    assetSource.filename.substring(0, assetSource.filename.lastIndexOf('/')) || '/gs/assets/converted' :
+                    '/gs/assets/converted';
+            }
+            // Remove filename from URL to get directory
+            try {
+                const url = new URL(assetSource.url, window.location.href);
+                const pathname = url.pathname;
+                const lastSlash = pathname.lastIndexOf('/');
+                if (lastSlash >= 0) {
+                    return pathname.substring(0, lastSlash);
+                }
+            } catch (e) {
+                // If URL parsing fails, fall through to default
+            }
         }
         return '/gs/assets/converted';
     };
@@ -85,13 +103,23 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
             // Use the provided URL directly for header.json
             url = assetSource.url;
         } else {
-            // Construct URL from basePath
-            url = `${basePath}/${filename}`;
+            // Construct absolute URL from basePath to ensure proper resolution
+            const fullPath = `${basePath}/${filename}`;
+            url = new URL(fullPath, window.location.href).href;
         }
+        
+        console.log(`[loadBinaryGsplat] Fetching ${filename}:`, {
+            basePath,
+            fullPath: `${basePath}/${filename}`,
+            url,
+            assetSourceUrl: assetSource.url,
+            assetSourceFilename: assetSource.filename,
+            hasMapFile: !!assetSource.mapFile
+        });
         
         const response = await fetch(url);
         if (!response.ok) {
-            throw new Error(`Failed to load ${filename}: ${response.statusText}`);
+            throw new Error(`Failed to load ${filename}: ${response.statusText} (tried: ${url})`);
         }
         return await response.arrayBuffer();
     };

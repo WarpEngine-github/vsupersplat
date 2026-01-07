@@ -10,6 +10,7 @@ import { Splat } from '../splat/splat';
 
 const defaultOrientation = new Vec3(0, 0, 180);
 const lccOrientation = new Vec3(90, 0, 180);
+const binaryGsplatOrientation = new Vec3(0, 0, 0);
 
 // handles loading gltf container assets
 class AssetLoader {
@@ -53,6 +54,7 @@ class AssetLoader {
             } else if (filename === 'header.json' || filename.endsWith('header.json')) {
                 // Binary format: header.json + splats.bin
                 asset = wrap(await loadBinaryGsplat(assetSource));
+                orientation = binaryGsplatOrientation;
             } else {
                 asset = await loadGsplat(this.app.assets, assetSource);
             }

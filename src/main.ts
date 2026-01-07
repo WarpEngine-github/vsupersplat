@@ -104,14 +104,19 @@ const initShortcuts = (events: Events) => {
     shortcuts.register([' '], { event: 'camera.toggleOverlay' });
     shortcuts.register(['K', 'k'], {
         ctrl: true,
-        func: () => {
+        func: async () => {
             const scene = window.scene;
             if (!scene) return;
 
-            const blob = new SphereShape();
-            blob.pivot.setLocalPosition(0, 0, -2); // In front of camera
-            scene.add(blob); // Add to scene first so this.scene is set
-            blob.radius = 0.5; // Small test blob (now safe because scene is set)
+            try {
+                // Load binary format from gs/assets/converted
+                await events.invoke('import', [{
+                    filename: 'header.json',
+                    url: '/gs/assets/converted/header.json'
+                }]);
+            } catch (error) {
+                console.error('Failed to load binary splat:', error);
+            }
         }
     });
 

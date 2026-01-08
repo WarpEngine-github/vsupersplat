@@ -76,6 +76,29 @@ def process_data(input_path, output_dir, skeleton_path=None):
             import traceback
             traceback.print_exc()
     
+    # Auto-detect std_male.model.pt if available
+    std_male_model_path = None
+    input_dir = os.path.dirname(input_path)
+    std_male_candidate = os.path.join(input_dir, 'std_male.model.pt')
+    if os.path.exists(std_male_candidate):
+        std_male_model_path = std_male_candidate
+    
+    # Load std_male.model.pt if available
+    std_male_model_data = None
+    if std_male_model_path:
+        print(f"\nLoading std_male.model.pt from {std_male_model_path}...")
+        try:
+            std_male_model_data = torch.load(std_male_model_path, map_location='cpu')
+            print(f"  Loaded std_male.model.pt: type={type(std_male_model_data)}")
+            if isinstance(std_male_model_data, dict):
+                print(f"  Keys: {list(std_male_model_data.keys())}")
+            elif hasattr(std_male_model_data, 'shape'):
+                print(f"  Shape: {std_male_model_data.shape}")
+        except Exception as e:
+            print(f"  Warning: Failed to load std_male.model.pt: {e}")
+            import traceback
+            traceback.print_exc()
+    
     # ============================================
     # Temporarily export pickle data for inspection
     # ============================================
@@ -381,6 +404,116 @@ def process_data(input_path, output_dir, skeleton_path=None):
             "format": "float32",
             "stride": 12  # 3 floats × 4 bytes
         }
+    
+    # Write std_male.model.pt skeleton data if available
+    if std_male_model_data is not None:
+        print("Exporting std_male.model.pt skeleton data...")
+        try:
+            if isinstance(std_male_model_data, dict) and 'joints' in std_male_model_data:
+                joints_data = std_male_model_data['joints']
+                
+                # Export rest_translations (joint positions for A-pose)
+                if 'rest_translations' in joints_data:
+                    rest_translations = to_np(joints_data['rest_translations'])
+                    print(f"  Writing std_male_rest_translations.bin: {rest_translations.shape}")
+                    with open(os.path.join(output_dir, "std_male_rest_translations.bin"), 'wb') as f:
+                        f.write(rest_translations.astype(np.float32).tobytes())
+                    
+                    header["stdMaleModel"] = header.get("stdMaleModel", {})
+                    header["stdMaleModel"]["restTranslations"] = {
+                        "file": "std_male_rest_translations.bin",
+                        "format": "float32",
+                        "shape": list(rest_translations.shape),
+                        "count": int(rest_translations.shape[0]),
+                        "stride": 12  # 3 floats × 4 bytes
+                    }
+                
+                # Export rest_rotations (joint rotations for A-pose)
+                if 'rest_rotations' in joints_data:
+                    rest_rotations = to_np(joints_data['rest_rotations'])
+                    print(f"  Writing std_male_rest_rotations.bin: {rest_rotations.shape}")
+                    with open(os.path.join(output_dir, "std_male_rest_rotations.bin"), 'wb') as f:
+                        f.write(rest_rotations.astype(np.float32).tobytes())
+                    
+                    header["stdMaleModel"] = header.get("stdMaleModel", {})
+                    header["stdMaleModel"]["restRotations"] = {
+                        "file": "std_male_rest_rotations.bin",
+                        "format": "float32",
+                        "shape": list(rest_rotations.shape),
+                        "count": int(rest_rotations.shape[0]),
+                        "stride": 16  # 4 floats × 4 bytes (quaternion)
+                    }
+                
+                # Export parents (bone hierarchy)
+                if 'parents' in joints_data:
+                    parents_std = to_np(joints_data['parents'])
+                    print(f"  Writing std_male_parents.bin: {parents_std.shape}")
+                    with open(os.path.join(output_dir, "std_male_parents.bin"), 'wb') as f:
+                        f.write(parents_std.astype(np.int32).tobytes())
+                    
+                    header["stdMaleModel"] = header.get("stdMaleModel", {})
+                    header["stdMaleModel"]["parents"] = {
+                        "file": "std_male_parents.bin",
+                        "format": "int32",
+                        "count": int(parents_std.shape[0]),
+                        "stride": 4  # 1 int32 × 4 bytes
+                    }
+                
+                # Export comp_translations if available
+                if 'comp_translations' in joints_data:
+                    comp_translations = to_np(joints_data['comp_translations'])
+                    print(f"  Writing std_male_comp_translations.bin: {comp_translations.shape}")
+                    with open(os.path.join(output_dir, "std_male_comp_translations.bin"), 'wb') as f:
+                        f.write(comp_translations.astype(np.float32).tobytes())
+                    
+                    header["stdMaleModel"] = header.get("stdMaleModel", {})
+                    header["stdMaleModel"]["compTranslations"] = {
+                        "file": "std_male_comp_translations.bin",
+                        "format": "float32",
+                        "shape": list(comp_translations.shape),
+                        "count": int(comp_translations.shape[0]),
+                        "stride": 12  # 3 floats × 4 bytes
+                    }
+                
+                # Export comp_rotations if available
+                if 'comp_rotations' in joints_data:
+                    comp_rotations = to_np(joints_data['comp_rotations'])
+                    print(f"  Writing std_male_comp_rotations.bin: {comp_rotations.shape}")
+                    with open(os.path.join(output_dir, "std_male_comp_rotations.bin"), 'wb') as f:
+                        f.write(comp_rotations.astype(np.float32).tobytes())
+                    
+                    header["stdMaleModel"] = header.get("stdMaleModel", {})
+                    header["stdMaleModel"]["compRotations"] = {
+                        "file": "std_male_comp_rotations.bin",
+                        "format": "float32",
+                        "shape": list(comp_rotations.shape),
+                        "count": int(comp_rotations.shape[0]),
+                        "stride": 16  # 4 floats × 4 bytes (quaternion)
+                    }
+                
+                # Export mesh vertices if available
+                if 'verts' in std_male_model_data:
+                    verts = to_np(std_male_model_data['verts'])
+                    print(f"  Writing std_male_verts.bin: {verts.shape}")
+                    with open(os.path.join(output_dir, "std_male_verts.bin"), 'wb') as f:
+                        f.write(verts.astype(np.float32).tobytes())
+                    
+                    header["stdMaleModel"] = header.get("stdMaleModel", {})
+                    header["stdMaleModel"]["verts"] = {
+                        "file": "std_male_verts.bin",
+                        "format": "float32",
+                        "shape": list(verts.shape),
+                        "count": int(verts.shape[0]),
+                        "stride": 12  # 3 floats × 4 bytes
+                    }
+                
+                print(f"  Successfully exported std_male.model.pt skeleton data")
+            else:
+                print(f"  Warning: std_male.model.pt does not contain 'joints' dictionary")
+        except Exception as e:
+            print(f"  Warning: Failed to export std_male.model.pt: {e}")
+            import traceback
+            traceback.print_exc()
     
     # Write header.json with all info (skeleton, joints, etc.)
     print("Writing header.json...")

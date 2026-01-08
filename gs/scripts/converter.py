@@ -32,6 +32,111 @@ def process_data(input_path, output_dir):
         if isinstance(x, torch.Tensor):
             return x.detach().cpu().numpy()
         return np.array(x)
+    
+    # ============================================
+    # Temporarily export pickle data for inspection
+    # ============================================
+    print("\nExporting pickle data summary...")
+    pickle_summary = {}
+    
+    def summarize_array(arr, max_items=5):
+        """Create a summary of an array"""
+        arr_np = to_np(arr)
+        summary = {
+            "shape": list(arr_np.shape),
+            "dtype": str(arr_np.dtype),
+            "min": float(arr_np.min()) if arr_np.size > 0 else None,
+            "max": float(arr_np.max()) if arr_np.size > 0 else None,
+            "mean": float(arr_np.mean()) if arr_np.size > 0 else None,
+        }
+        # Add sample values for small arrays
+        if arr_np.size <= max_items:
+            if arr_np.ndim <= 2:
+                summary["sample"] = arr_np.tolist()
+        elif arr_np.ndim == 1:
+            summary["sample_first"] = arr_np[:max_items].tolist()
+            summary["sample_last"] = arr_np[-max_items:].tolist()
+        elif arr_np.ndim == 2:
+            summary["sample_first_row"] = arr_np[0, :max_items].tolist() if arr_np.shape[0] > 0 else None
+        return summary
+    
+    for key, value in data.items():
+        try:
+            if isinstance(value, (torch.Tensor, np.ndarray)):
+                summary = summarize_array(value)
+                # Add bone count analysis for relevant arrays
+                arr_np = to_np(value)
+                if key == 'W' and len(arr_np.shape) == 2:
+                    summary["num_bones"] = arr_np.shape[1]
+                    summary["note"] = f"Weights matrix: {arr_np.shape[0]} splats × {arr_np.shape[1]} bones"
+                elif key == 'joints' and len(arr_np.shape) == 2:
+                    summary["num_joints"] = arr_np.shape[0]
+                    summary["note"] = f"Joint positions: {arr_np.shape[0]} joints × {arr_np.shape[1]} coordinates"
+                pickle_summary[key] = summary
+            elif isinstance(value, dict):
+                nested_summary = {
+                    "type": "dict",
+                    "keys": list(value.keys()),
+                    "note": "Nested dictionary"
+                }
+                # Analyze poses dict specifically
+                if key == 'poses':
+                    if 'rotations' in value:
+                        rot_np = to_np(value['rotations'])
+                        nested_summary["rotations_shape"] = list(rot_np.shape)
+                        nested_summary["num_frames"] = rot_np.shape[0] if len(rot_np.shape) > 0 else None
+                        nested_summary["num_bones_in_animation"] = rot_np.shape[1] if len(rot_np.shape) > 1 else None
+                    if 'translations' in value:
+                        trans_np = to_np(value['translations'])
+                        nested_summary["translations_shape"] = list(trans_np.shape)
+                        nested_summary["num_bones_in_animation_trans"] = trans_np.shape[1] if len(trans_np.shape) > 1 else None
+                    # Compare with weights bone count
+                    if 'W' in data:
+                        weights_np = to_np(data['W'])
+                        nested_summary["num_bones_for_skinning"] = weights_np.shape[1] if len(weights_np.shape) > 1 else None
+                        if nested_summary.get("num_bones_in_animation") and nested_summary.get("num_bones_for_skinning"):
+                            diff = nested_summary["num_bones_in_animation"] - nested_summary["num_bones_for_skinning"]
+                            nested_summary["bone_count_difference"] = diff
+                            nested_summary["note"] = f"Animation has {nested_summary['num_bones_in_animation']} bones, but weights reference {nested_summary['num_bones_for_skinning']} bones (difference: {diff})"
+                pickle_summary[key] = nested_summary
+            else:
+                pickle_summary[key] = {
+                    "type": type(value).__name__,
+                    "value": str(value)[:200] if len(str(value)) <= 200 else str(value)[:200] + "..."
+                }
+        except Exception as e:
+            pickle_summary[key] = {
+                "type": type(value).__name__,
+                "error": str(e)
+            }
+    
+    # Add overall bone count comparison
+    if 'W' in data and 'poses' in data:
+        weights_np = to_np(data['W'])
+        num_bones_weights = weights_np.shape[1] if len(weights_np.shape) > 1 else None
+        
+        poses_data = data['poses']
+        if hasattr(poses_data, 'item') and hasattr(poses_data, 'ndim') and poses_data.ndim == 0:
+            poses_data = poses_data.item()
+        
+        if isinstance(poses_data, dict) and 'rotations' in poses_data:
+            rot_np = to_np(poses_data['rotations'])
+            num_bones_animation = rot_np.shape[1] if len(rot_np.shape) > 1 else None
+            
+            pickle_summary["_bone_count_analysis"] = {
+                "weights_bones": num_bones_weights,
+                "animation_bones": num_bones_animation,
+                "joints_bones": pickle_summary.get('joints', {}).get('num_joints') if 'joints' in pickle_summary else None,
+                "match": num_bones_weights == num_bones_animation if (num_bones_weights and num_bones_animation) else None,
+                "note": "Comparison of bone counts across different data sources"
+            }
+    
+    # Save summary to JSON
+    os.makedirs(output_dir, exist_ok=True)
+    summary_path = os.path.join(output_dir, "pickle_summary.json")
+    with open(summary_path, 'w') as f:
+        json.dump(pickle_summary, f, indent=2)
+    print(f"  Saved pickle data summary to {summary_path}")
 
     means = to_np(data['mu'])
     covs = to_np(data['cov'])
@@ -39,12 +144,20 @@ def process_data(input_path, output_dir):
     opacities = to_np(data['opacity'])
     weights = to_np(data['W']) # Skinning weights (N, Bones)
     
+    # Load joints (bone rest positions) if available
+    joints = None
+    if 'joints' in data:
+        joints = to_np(data['joints'])
+        print(f"Joints: {joints.shape}")
+    
     print(f"Original data shapes:")
     print(f"  Means: {means.shape}")
     print(f"  Covs: {covs.shape}")
     print(f"  Colors: {colors.shape}")
     print(f"  Opacities: {opacities.shape}")
     print(f"  Weights: {weights.shape}")
+    if joints is not None:
+        print(f"  Joints: {joints.shape}")
     
     # ============================================
     # Filter out low opacity splats (< 0.1)
@@ -189,6 +302,26 @@ def process_data(input_path, output_dir):
         print("Writing animation.bin...")
         with open(os.path.join(output_dir, "animation.bin"), 'wb') as f:
             f.write(poses.astype(np.float32).tobytes())
+    
+    # Write joints.bin if available
+    if joints is not None:
+        print("Writing joints.bin...")
+        # Format: 441 joints × 3 floats (x, y, z) = 12 bytes per joint
+        with open(os.path.join(output_dir, "joints.bin"), 'wb') as f:
+            f.write(joints.astype(np.float32).tobytes())
+        print(f"  Exported {len(joints)} joint positions")
+        
+        # Also add joints to header for easy access
+        header["joints"] = {
+            "count": len(joints),
+            "file": "joints.bin",
+            "format": "float32",
+            "stride": 12  # 3 floats × 4 bytes
+        }
+        
+        # Update header.json with joints info
+        with open(os.path.join(output_dir, "header.json"), 'w') as f:
+            json.dump(header, f, indent=2)
             
     print("Done! Output saved to", output_dir)
 

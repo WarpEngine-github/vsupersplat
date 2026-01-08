@@ -126,21 +126,32 @@ export class SplatAnimation {
      * Called automatically by timeline.time event listener
      */
     setFrame(frameIndex: number) {
+        // return;
         if (frameIndex < 0 || frameIndex >= this.numFrames) return;
         
         // TEST: Restore correct transform indices but fill all bone matrices with identity
         // First, restore the bone mapping (this was commented out in constructor)
         this.setupSplatBoneMapping();
         
-        // Now fill all bone matrices in the palette with identity matrices
-        const identityMat = new Mat4(); // Identity matrix by default
-        identityMat.setTranslate(0, 1, 0);
+        // TEST: Transform only head bone (bone index 9)
+        const headBoneIdx = 9; // "head" bone from skeleton names
+        const yOffset = frameIndex * 0.1;
         
+        // Fill all bones with identity first
+        const identityMat = new Mat4();
         for (let boneIdx = 0; boneIdx < this.numBones; boneIdx++) {
             const paletteIndex = this.bonePaletteIndices.get(boneIdx);
             if (paletteIndex !== undefined) {
                 this.splat.transformPalette.setTransform(paletteIndex, identityMat);
             }
+        }
+        
+        // Apply upward translation only to head bone
+        const headMat = new Mat4();
+        headMat.setTranslate(0, yOffset, 0);
+        const headPaletteIndex = this.bonePaletteIndices.get(headBoneIdx);
+        if (headPaletteIndex !== undefined) {
+            this.splat.transformPalette.setTransform(headPaletteIndex, headMat);
         }
         
         // Trigger position update so splats reflect the transforms

@@ -1,4 +1,5 @@
 import { Mat4 } from 'playcanvas';
+
 import { BinaryGsplatAnimationData } from '../file/loaders/binary-gsplat';
 import { Events } from '../events';
 import { TransformPalette } from '../transform/transform-palette';
@@ -42,7 +43,7 @@ export class SplatAnimation {
         
         // Map splats to their primary bone (highest weight)
         // TEMPORARILY DISABLED: Comment out the line below to disable bone mapping (keeps transform indices at 0)
-        // this.setupSplatBoneMapping();
+        this.setupSplatBoneMapping();
         
         // Helper function to update animation frame from timeline frame/time
         const updateFromTimeline = (timelineValue: number) => {
@@ -127,34 +128,22 @@ export class SplatAnimation {
     setFrame(frameIndex: number) {
         if (frameIndex < 0 || frameIndex >= this.numFrames) return;
         
-        // TEMPORARILY DISABLED: Comment out the return below to re-enable animations
-        return;
+        // TEST: Restore correct transform indices but fill all bone matrices with identity
+        // First, restore the bone mapping (this was commented out in constructor)
+        this.setupSplatBoneMapping();
         
-        const { data } = this.animationData.animation;
-        const FLOATS_PER_BONE = 16; // 4×4 matrix
-        const frameSize = this.numBones * FLOATS_PER_BONE;
-        const offset = frameIndex * frameSize;
+        // Now fill all bone matrices in the palette with identity matrices
+        const identityMat = new Mat4(); // Identity matrix by default
+        identityMat.setTranslate(0, 1, 0);
         
-        const mat = new Mat4();
-        const matData = mat.data;
-        
-        // Update each bone's transform in the palette
         for (let boneIdx = 0; boneIdx < this.numBones; boneIdx++) {
-            const boneOffset = offset + boneIdx * FLOATS_PER_BONE;
-            
-            // Copy 16 floats into Mat4 (column-major order)
-            // PlayCanvas Mat4.data is column-major: [m00, m10, m20, m30, m01, m11, ...]
-            for (let i = 0; i < 16; i++) {
-                matData[i] = data[boneOffset + i];
-            }
-            
             const paletteIndex = this.bonePaletteIndices.get(boneIdx);
             if (paletteIndex !== undefined) {
-                //this.splat.transformPalette.setTransform(paletteIndex, mat);
+                this.splat.transformPalette.setTransform(paletteIndex, identityMat);
             }
         }
         
-        // Trigger position update so splats reflect new bone transforms
+        // Trigger position update so splats reflect the transforms
         this.splat.updatePositions();
     }
     

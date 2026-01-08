@@ -1,9 +1,10 @@
-import { Mat4 } from 'playcanvas';
+import { Mat4, Quat, Vec3 } from 'playcanvas';
 
 import { BinaryGsplatAnimationData } from '../file/loaders/binary-gsplat';
 import { Events } from '../events';
 import { TransformPalette } from '../transform/transform-palette';
 import { Splat } from './splat';
+import { SphereShape } from '../shapes/sphere-shape';
 
 /**
  * Animation system for PlayCanvas Gaussian Splats
@@ -21,6 +22,9 @@ export class SplatAnimation {
     
     // Bone palette indices (one per bone, starting from palette index 1)
     bonePaletteIndices: Map<number, number> = new Map();
+    
+    // Bone visualization spheres
+    boneSpheres: SphereShape[] = [];
     
     // Timeline event handlers
     private timelineTimeHandle: any = null;
@@ -84,6 +88,9 @@ export class SplatAnimation {
             this.numFrames - 1
         );
         this.setFrame(initialFrame);
+        
+        // Visualize bones as spheres
+        this.visualizeBones();
     }
     
     /**
@@ -159,9 +166,138 @@ export class SplatAnimation {
     }
     
     /**
+     * Visualize all bones as spheres using std_male A-pose data
+     * Traverses bone hierarchy to calculate world transforms
+     */
+    visualizeBones() {
+        // Clear existing spheres
+        this.clearBoneVisualization();
+        
+        if (!this.splat.scene) {
+            console.warn('Cannot visualize bones: splat not added to scene');
+            return;
+        }
+        
+        // Check for required std_male data
+        if (!this.animationData.stdMaleRestTranslations || 
+            !this.animationData.stdMaleRestRotations || 
+            !this.animationData.stdMaleParents) {
+            console.warn('Cannot visualize bones: std_male skeleton data not available (need restTranslations, restRotations, and parents)');
+            return;
+        }
+        
+        const restTranslations = this.animationData.stdMaleRestTranslations;
+        const restRotations = this.animationData.stdMaleRestRotations;
+        const parents = this.animationData.stdMaleParents;
+        const numBones = restTranslations.length / 3;
+        
+        if (numBones !== this.numBones || numBones !== parents.length) {
+            console.warn(`Bone count mismatch: ${numBones} std_male bones vs ${this.numBones} animation bones`);
+        }
+        
+        // Calculate world transforms by traversing hierarchy
+        const worldTransforms = new Array<Mat4>(numBones);
+        const bonePos = new Vec3();
+        
+        // Find root bones (parent = -1)
+        const rootBones: number[] = [];
+        for (let i = 0; i < numBones; i++) {
+            if (parents[i] === -1) {
+                rootBones.push(i);
+            }
+        }
+        
+        if (rootBones.length === 0) {
+            console.warn('No root bone found (parent = -1), assuming bone 0 is root');
+            rootBones.push(0);
+        }
+        
+        // Helper to create transform matrix from translation and rotation quaternion
+        const createLocalTransform = (boneIdx: number): Mat4 => {
+            const tx = restTranslations[boneIdx * 3 + 0];
+            const ty = restTranslations[boneIdx * 3 + 1];
+            const tz = restTranslations[boneIdx * 3 + 2];
+            
+            const qx = restRotations[boneIdx * 4 + 0];
+            const qy = restRotations[boneIdx * 4 + 1];
+            const qz = restRotations[boneIdx * 4 + 2];
+            const qw = restRotations[boneIdx * 4 + 3];
+            
+            // Create transform matrix: T * R
+            const localMat = new Mat4();
+            localMat.setTRS(new Vec3(tx, ty, tz), new Quat(qx, qy, qz, qw), new Vec3(1, 1, 1));
+            return localMat;
+        };
+        
+        // Initialize all transforms
+        for (let i = 0; i < numBones; i++) {
+            worldTransforms[i] = new Mat4();
+        }
+        
+        // Set root bone world transforms (world = local for root)
+        for (const rootIdx of rootBones) {
+            worldTransforms[rootIdx] = createLocalTransform(rootIdx);
+        }
+        
+        // Traverse hierarchy: process bones in order, accumulating parent transforms
+        // This assumes bones are stored in hierarchical order (parents before children)
+        for (let boneIdx = 0; boneIdx < numBones; boneIdx++) {
+            // Skip if already processed (root bones)
+            if (rootBones.includes(boneIdx)) {
+                continue;
+            }
+            
+            const parentIdx = parents[boneIdx];
+            
+            if (parentIdx >= 0 && parentIdx < numBones) {
+                // World transform = parent's world transform × local transform
+                const localMat = createLocalTransform(boneIdx);
+                worldTransforms[boneIdx].mul2(worldTransforms[parentIdx], localMat);
+            } else {
+                // Invalid parent - use local transform as world transform
+                worldTransforms[boneIdx] = createLocalTransform(boneIdx);
+            }
+        }
+        
+        // Create spheres at world positions from transforms
+        for (let boneIdx = 0; boneIdx < numBones; boneIdx++) {
+            // Extract translation from world transform matrix
+            worldTransforms[boneIdx].getTranslation(bonePos);
+            
+            // Create sphere at bone position
+            const sphere = new SphereShape();
+            // Add to scene FIRST so scene is set before updateBound() is called
+            this.splat.scene.add(sphere);
+            // Then set properties (radius triggers updateBound which needs scene)
+            sphere.radius = 0.01; // Small sphere for bones
+            sphere.pivot.setPosition(bonePos);
+            sphere.moved();
+            
+            this.boneSpheres.push(sphere);
+        }
+        
+        console.log(`Visualized ${this.boneSpheres.length} bones as spheres using std_male hierarchy traversal (${rootBones.length} root bone(s))`);
+    }
+    
+    /**
+     * Clear bone visualization spheres
+     */
+    clearBoneVisualization() {
+        for (const sphere of this.boneSpheres) {
+            if (sphere.scene) {
+                sphere.remove();
+                sphere.destroy();
+            }
+        }
+        this.boneSpheres = [];
+    }
+    
+    /**
      * Clean up event handlers
      */
     destroy() {
+        this.clearBoneVisualization();
+        
         if (this.timelineTimeHandle) {
             this.timelineTimeHandle.off();
             this.timelineTimeHandle = null;

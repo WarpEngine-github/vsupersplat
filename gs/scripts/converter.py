@@ -20,7 +20,7 @@ def decompose_covariance(cov_matrix):
         print(f"Error decomposing covariance: {e}")
         return np.array([0.01, 0.01, 0.01]), np.array([0, 0, 0, 1])
 
-def process_data(input_path, output_dir):
+def process_data(input_path, output_dir, skeleton_path=None):
     print(f"Loading {input_path}...")
     
     with open(input_path, 'rb') as f:
@@ -32,6 +32,49 @@ def process_data(input_path, output_dir):
         if isinstance(x, torch.Tensor):
             return x.detach().cpu().numpy()
         return np.array(x)
+    
+    # Auto-detect skeleton.pt if not provided
+    if skeleton_path is None:
+        input_dir = os.path.dirname(input_path)
+        for name in ['skeleton.pt', '441-skeleton.pt']:
+            candidate = os.path.join(input_dir, name)
+            if os.path.exists(candidate):
+                skeleton_path = candidate
+                break
+    
+    # Load skeleton data if available
+    skeleton_data = None
+    bone_names = None
+    parents = None
+    
+    if skeleton_path and os.path.exists(skeleton_path):
+        print(f"\nLoading skeleton from {skeleton_path}...")
+        try:
+            skeleton_data = torch.load(skeleton_path, map_location='cpu')
+            print(f"Skeleton type: {type(skeleton_data)}")
+            
+            if isinstance(skeleton_data, dict):
+                bone_names = skeleton_data.get('joint_names', skeleton_data.get('bone_names', skeleton_data.get('names')))
+                parents = skeleton_data.get('parents', skeleton_data.get('parent'))
+                
+                if bone_names is not None:
+                    bone_names = to_np(bone_names) if isinstance(bone_names, torch.Tensor) else list(bone_names)
+                    print(f"  Found {len(bone_names)} bone names")
+                
+                if parents is not None:
+                    parents = to_np(parents) if isinstance(parents, torch.Tensor) else np.array(parents)
+                    print(f"  Found parents array: shape {parents.shape}")
+                    print(f"  Root bones (parent=-1): {np.sum(parents == -1)}")
+            else:
+                # Try to get attributes
+                if hasattr(skeleton_data, 'joint_names'):
+                    bone_names = to_np(skeleton_data.joint_names) if isinstance(skeleton_data.joint_names, torch.Tensor) else list(skeleton_data.joint_names)
+                if hasattr(skeleton_data, 'parents'):
+                    parents = to_np(skeleton_data.parents) if isinstance(skeleton_data.parents, torch.Tensor) else np.array(skeleton_data.parents)
+        except Exception as e:
+            print(f"  Warning: Failed to load skeleton: {e}")
+            import traceback
+            traceback.print_exc()
     
     # ============================================
     # Temporarily export pickle data for inspection
@@ -149,6 +192,26 @@ def process_data(input_path, output_dir):
     if 'joints' in data:
         joints = to_np(data['joints'])
         print(f"Joints: {joints.shape}")
+        
+        # Convert relative joint positions to absolute world positions using hierarchy
+        if parents is not None and len(parents) == len(joints):
+            print("Converting relative joint positions to absolute world positions...")
+            joints_absolute = np.zeros_like(joints)
+            joints_absolute[0] = joints[0]  # Root is already absolute
+            
+            # Traverse hierarchy to accumulate transforms
+            for i in range(1, len(joints)):
+                parent_idx = int(parents[i])
+                if parent_idx >= 0 and parent_idx < len(joints_absolute):
+                    joints_absolute[i] = joints_absolute[parent_idx] + joints[i]
+                else:
+                    # If parent is invalid, use relative position as-is
+                    joints_absolute[i] = joints[i]
+            
+            joints = joints_absolute
+            print(f"  Converted to absolute positions")
+        else:
+            print("  Warning: No parent hierarchy available, keeping joints as-is")
     
     print(f"Original data shapes:")
     print(f"  Means: {means.shape}")
@@ -266,6 +329,26 @@ def process_data(input_path, output_dir):
         }
     }
     
+    # Add skeleton info to header if available
+    if bone_names is not None:
+        header["boneNames"] = bone_names if isinstance(bone_names, list) else bone_names.tolist()
+    
+    if parents is not None:
+        # Write parents to a binary file
+        print("Writing skeleton.bin (bone hierarchy)...")
+        with open(os.path.join(output_dir, "skeleton.bin"), 'wb') as f:
+            # Format: 441 bones × 1 int32 (parent index) = 4 bytes per bone
+            parents_int32 = parents.astype(np.int32)
+            f.write(parents_int32.tobytes())
+        print(f"  Exported {len(parents)} parent indices")
+        
+        header["skeleton"] = {
+            "count": len(parents),
+            "file": "skeleton.bin",
+            "format": "int32",
+            "stride": 4  # 1 int32 × 4 bytes
+        }
+    
     with open(os.path.join(output_dir, "header.json"), 'w') as f:
         json.dump(header, f, indent=2)
         
@@ -318,10 +401,11 @@ def process_data(input_path, output_dir):
             "format": "float32",
             "stride": 12  # 3 floats × 4 bytes
         }
-        
-        # Update header.json with joints info
-        with open(os.path.join(output_dir, "header.json"), 'w') as f:
-            json.dump(header, f, indent=2)
+    
+    # Write header.json with all info (skeleton, joints, etc.)
+    print("Writing header.json...")
+    with open(os.path.join(output_dir, "header.json"), 'w') as f:
+        json.dump(header, f, indent=2)
             
     print("Done! Output saved to", output_dir)
 
@@ -329,7 +413,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert GS assets to Web format")
     parser.add_argument("input_file", help="Path to .pkl file")
     parser.add_argument("output_dir", help="Directory to save output files")
+    parser.add_argument("--skeleton", help="Path to skeleton.pt file (auto-detected if not provided)")
     
     args = parser.parse_args()
     
-    process_data(args.input_file, args.output_dir)
+    process_data(args.input_file, args.output_dir, args.skeleton)

@@ -187,31 +187,11 @@ def process_data(input_path, output_dir, skeleton_path=None):
     opacities = to_np(data['opacity'])
     weights = to_np(data['W']) # Skinning weights (N, Bones)
     
-    # Load joints (bone rest positions) if available
+    # Load joints (bone rest positions) if available - export raw, no modifications
     joints = None
     if 'joints' in data:
         joints = to_np(data['joints'])
-        print(f"Joints: {joints.shape}")
-        
-        # Convert relative joint positions to absolute world positions using hierarchy
-        if parents is not None and len(parents) == len(joints):
-            print("Converting relative joint positions to absolute world positions...")
-            joints_absolute = np.zeros_like(joints)
-            joints_absolute[0] = joints[0]  # Root is already absolute
-            
-            # Traverse hierarchy to accumulate transforms
-            for i in range(1, len(joints)):
-                parent_idx = int(parents[i])
-                if parent_idx >= 0 and parent_idx < len(joints_absolute):
-                    joints_absolute[i] = joints_absolute[parent_idx] + joints[i]
-                else:
-                    # If parent is invalid, use relative position as-is
-                    joints_absolute[i] = joints[i]
-            
-            joints = joints_absolute
-            print(f"  Converted to absolute positions")
-        else:
-            print("  Warning: No parent hierarchy available, keeping joints as-is")
+        print(f"Joints: {joints.shape} (raw, no modifications)")
     
     print(f"Original data shapes:")
     print(f"  Means: {means.shape}")

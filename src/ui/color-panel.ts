@@ -6,6 +6,7 @@ import { localize } from './localization';
 import { Tooltips } from './tooltips';
 import { SetSplatColorAdjustmentOp } from '../editor/edit-ops';
 import { Splat } from '../splat/splat';
+import { SceneObject } from '../core/scene-object';
 
 // pcui slider doesn't include start and end events
 class MyFancySliderInput extends SliderInput {
@@ -235,12 +236,16 @@ class ColorPanel extends Container {
         // handle ui updates
 
         let suppress = false;
-        let selected: Splat = null;
+        let selected: Splat | null = null;
         let op: SetSplatColorAdjustmentOp = null;
 
-        const updateUIFromState = (splat: Splat) => {
+        const updateUIFromState = (selection: SceneObject | null) => {
             if (suppress) return;
             suppress = true;
+            
+            // Only update UI if selection is a splat (armatures don't have color properties)
+            const splat = selection instanceof Splat ? selection : null;
+            
             tintPicker.value = splat ? [splat.tintClr.r, splat.tintClr.g, splat.tintClr.b] : [1, 1, 1];
             temperatureSlider.value = splat ? splat.temperature : 0;
             saturationSlider.value = splat ? splat.saturation : 0;

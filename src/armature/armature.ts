@@ -3,7 +3,7 @@ import { ElementType } from '../core/element';
 import { SceneObject } from '../core/scene-object';
 import { ArmatureData, AnimationData } from '../file/loaders/binary-gsplat';
 import { Events } from '../events';
-import { SphereShape } from '../shapes/sphere-shape';
+import { BoneShape } from '../shapes/bone-shape';
 import { Mat4, Quat, Vec3 } from 'playcanvas';
 import { Splat } from '../splat/splat';
 
@@ -16,7 +16,7 @@ export class Armature extends SceneObject {
     animationData?: AnimationData;
     numFrames: number;
     numBones: number;
-    boneSpheres: SphereShape[] = [];
+    boneMeshes: BoneShape[] = [];
     
     // Linked splats that use this armature for skinning
     linkedSplats: Set<Splat> = new Set();
@@ -359,7 +359,8 @@ export class Armature extends SceneObject {
     }
     
     /**
-     * Visualize all bones as spheres using pre-calculated world transforms
+     * Visualize all bones as meshes using pre-calculated world transforms
+     * Each bone is drawn as a capsule from its parent to its position
      * @param worldTransforms Array of world space bone transforms (from calculateBoneTransforms)
      */
     visualizeBones(worldTransforms: Mat4[]) {
@@ -369,44 +370,57 @@ export class Armature extends SceneObject {
         }
         
         const numBones = worldTransforms.length;
-        const bonePos = new Vec3();
-        const boneRot = new Quat();
+        const parents = this.armatureData.stdMaleParents!;
         
-        // Create or update spheres at world positions from transforms
-        const spheresNeedCreation = this.boneSpheres.length === 0;
+        // Extract raw transform data (position, rotation, scale) from each bone's world transform
+        const boneTransforms = worldTransforms.map(mat => {
+            const pos = new Vec3();
+            const rot = new Quat();
+            const scale = new Vec3();
+            mat.getTranslation(pos);
+            rot.setFromMat4(mat);
+            mat.getScale(scale);
+            return { position: pos, rotation: rot, scale };
+        });
         
+        // Create or update bone meshes
+        const meshesNeedCreation = this.boneMeshes.length === 0;
+        
+        // Create a bone mesh for each bone
         for (let boneIdx = 0; boneIdx < numBones; boneIdx++) {
-            // Extract translation and rotation from world transform matrix
-            worldTransforms[boneIdx].getTranslation(bonePos);
-            boneRot.setFromMat4(worldTransforms[boneIdx]);
-            
-            if (spheresNeedCreation) {
-                // Create new sphere
-                const sphere = new SphereShape();
+            if (meshesNeedCreation) {
+                // Create new bone mesh
+                const boneMesh = new BoneShape();
                 // Add to scene FIRST so scene is set before updateBound() is called
-                this.scene.add(sphere);
-                // Then set properties (radius triggers updateBound which needs scene)
-                sphere.radius = 0.01; // Small sphere for bones
-                sphere.pivot.setPosition(bonePos);
-                sphere.pivot.setRotation(boneRot);
-                sphere.moved();
-                
-                this.boneSpheres.push(sphere);
-            } else {
-                // Update existing sphere
-                if (boneIdx < this.boneSpheres.length) {
-                    const sphere = this.boneSpheres[boneIdx];
-                    if (sphere && sphere.scene) {
-                        sphere.pivot.setPosition(bonePos);
-                        sphere.pivot.setRotation(boneRot);
-                        sphere.moved();
+                this.scene.add(boneMesh);
+                // Set radius after adding to scene
+                boneMesh.radius = 0.05; // Increased radius for better visibility
+                this.boneMeshes.push(boneMesh);
+            }
+            
+            // Update bone mesh transform using raw transform data
+            if (boneIdx < this.boneMeshes.length) {
+                const boneMesh = this.boneMeshes[boneIdx];
+                if (boneMesh && boneMesh.scene && boneMesh.pivot) {
+                    const transform = boneTransforms[boneIdx];
+                    
+                    boneMesh.setTransform(transform.position, transform.rotation, transform.scale);
+                    // Ensure pivot is enabled after setting transform
+                    if (boneMesh.pivot) {
+                        boneMesh.pivot.enabled = true;
                     }
                 }
             }
         }
         
-        if (spheresNeedCreation) {
-            console.log(`Visualized ${this.boneSpheres.length} bones as spheres`);
+        if (meshesNeedCreation) {
+            console.log(`[Armature] Visualized ${this.boneMeshes.length} bones as meshes`);
+            // Debug: log first few bone transforms
+            if (this.boneMeshes.length > 0 && boneTransforms.length > 0) {
+                const firstTransform = boneTransforms[0];
+                console.log(`[Armature] First bone mesh position:`, firstTransform.position);
+                console.log(`[Armature] First bone mesh pivot enabled:`, this.boneMeshes[0]?.pivot?.enabled);
+            }
         }
     }
     
@@ -527,13 +541,13 @@ export class Armature extends SceneObject {
     }
     
     clearBoneVisualization() {
-        for (const sphere of this.boneSpheres) {
-            if (sphere.scene) {
-                sphere.remove();
-                sphere.destroy();
+        for (const mesh of this.boneMeshes) {
+            if (mesh.scene) {
+                mesh.remove();
+                mesh.destroy();
             }
         }
-        this.boneSpheres = [];
+        this.boneMeshes = [];
     }
     
     /**
@@ -541,9 +555,9 @@ export class Armature extends SceneObject {
      * @param visible Whether to show the bone spheres
      */
     setBoneVisualizationVisible(visible: boolean) {
-        for (const sphere of this.boneSpheres) {
-            if (sphere.scene && sphere.pivot) {
-                sphere.pivot.enabled = visible;
+        for (const mesh of this.boneMeshes) {
+            if (mesh.scene && mesh.pivot) {
+                mesh.pivot.enabled = visible;
                 this.scene.forceRender = true;
             }
         }
@@ -554,11 +568,11 @@ export class Armature extends SceneObject {
      * @returns true if any bone sphere is visible, false otherwise
      */
     getBoneVisualizationVisible(): boolean {
-        if (this.boneSpheres.length === 0) {
+        if (this.boneMeshes.length === 0) {
             return false;
         }
-        // Check if any sphere is visible
-        return this.boneSpheres.some(sphere => sphere.scene && sphere.pivot && sphere.pivot.enabled);
+        // Check if any mesh is visible
+        return this.boneMeshes.some(mesh => mesh.scene && mesh.pivot && mesh.pivot.enabled);
     }
     
     /**

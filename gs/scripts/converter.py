@@ -20,6 +20,57 @@ def decompose_covariance(cov_matrix):
         print(f"Error decomposing covariance: {e}")
         return np.array([0.01, 0.01, 0.01]), np.array([0, 0, 0, 1])
 
+def load_1185_skeleton(input_dir):
+    """Load 1185-skeleton.json which contains all 1185 bone names"""
+    # Try multiple possible locations
+    possible_paths = [
+        os.path.join(input_dir, '1185-skeleton.json'),
+        os.path.join(input_dir, '..', '1185-skeleton.json'),  # One level up
+        os.path.join(input_dir, '..', 'assets', '1185-skeleton.json'),  # In assets folder
+    ]
+    
+    for skeleton_1185_path in possible_paths:
+        if os.path.exists(skeleton_1185_path):
+            with open(skeleton_1185_path, 'r') as f:
+                return json.load(f)
+    
+    return None
+
+def create_bone_mapping(bone_names_441, skeleton_1185_names):
+    """
+    Create mapping from 441 bone names to their indices in the 1185 skeleton.
+    Returns: numpy array of indices (length 441) indicating which bones from 1185 to keep
+    """
+    if skeleton_1185_names is None:
+        return None
+    
+    # Create a mapping from bone name to index in 1185 skeleton
+    name_to_index_1185 = {name: idx for idx, name in enumerate(skeleton_1185_names)}
+    
+    # Map each 441 bone name to its index in 1185
+    bone_indices = []
+    missing_bones = []
+    
+    for bone_name in bone_names_441:
+        if bone_name in name_to_index_1185:
+            bone_indices.append(name_to_index_1185[bone_name])
+        else:
+            missing_bones.append(bone_name)
+            # If bone not found, we'll skip it (or use -1 as placeholder)
+            bone_indices.append(-1)
+    
+    if missing_bones:
+        print(f"  Warning: {len(missing_bones)} bones from skeleton.pt not found in 1185-skeleton.json:")
+        print(f"    First 10 missing: {missing_bones[:10]}")
+    
+    # Filter out any -1 indices (bones not found)
+    valid_indices = [idx for idx in bone_indices if idx != -1]
+    if len(valid_indices) != len(bone_indices):
+        print(f"  Warning: Only {len(valid_indices)}/{len(bone_indices)} bones could be mapped")
+        return None
+    
+    return np.array(bone_indices, dtype=np.int32)
+
 def process_data(input_path, output_dir, skeleton_path=None):
     print(f"Loading {input_path}...")
     
@@ -42,10 +93,18 @@ def process_data(input_path, output_dir, skeleton_path=None):
                 skeleton_path = candidate
                 break
     
+    # Load 1185-skeleton.json for bone name mapping
+    skeleton_1185_names = load_1185_skeleton(input_dir)
+    if skeleton_1185_names:
+        print(f"  Loaded 1185-skeleton.json: {len(skeleton_1185_names)} bone names")
+    else:
+        print(f"  Warning: 1185-skeleton.json not found, cannot filter animation bones")
+    
     # Load skeleton data if available
     skeleton_data = None
     bone_names = None
     parents = None
+    bone_mapping_indices = None  # Mapping from 441 bones to 1185 bone indices
     
     if skeleton_path and os.path.exists(skeleton_path):
         print(f"\nLoading skeleton from {skeleton_path}...")
@@ -60,6 +119,14 @@ def process_data(input_path, output_dir, skeleton_path=None):
                 if bone_names is not None:
                     bone_names = to_np(bone_names) if isinstance(bone_names, torch.Tensor) else list(bone_names)
                     print(f"  Found {len(bone_names)} bone names")
+                    
+                    # Create mapping from 441 bones to 1185 skeleton indices
+                    if skeleton_1185_names:
+                        bone_mapping_indices = create_bone_mapping(bone_names, skeleton_1185_names)
+                        if bone_mapping_indices is not None:
+                            print(f"  Created bone mapping: 441 bones mapped to 1185 skeleton indices")
+                        else:
+                            print(f"  Warning: Failed to create bone mapping")
                 
                 if parents is not None:
                     parents = to_np(parents) if isinstance(parents, torch.Tensor) else np.array(parents)
@@ -69,6 +136,15 @@ def process_data(input_path, output_dir, skeleton_path=None):
                 # Try to get attributes
                 if hasattr(skeleton_data, 'joint_names'):
                     bone_names = to_np(skeleton_data.joint_names) if isinstance(skeleton_data.joint_names, torch.Tensor) else list(skeleton_data.joint_names)
+                    print(f"  Found {len(bone_names)} bone names (from attributes)")
+                    
+                    # Create mapping from 441 bones to 1185 skeleton indices
+                    if skeleton_1185_names:
+                        bone_mapping_indices = create_bone_mapping(bone_names, skeleton_1185_names)
+                        if bone_mapping_indices is not None:
+                            print(f"  Created bone mapping: 441 bones mapped to 1185 skeleton indices")
+                        else:
+                            print(f"  Warning: Failed to create bone mapping")
                 if hasattr(skeleton_data, 'parents'):
                     parents = to_np(skeleton_data.parents) if isinstance(skeleton_data.parents, torch.Tensor) else np.array(skeleton_data.parents)
         except Exception as e:
@@ -264,8 +340,25 @@ def process_data(input_path, output_dir, skeleton_path=None):
             print(f"Animation Translations: {translations.shape}")
             
             num_frames = rotations.shape[0]
-            num_bones = rotations.shape[1]
-            animation_num_bones = num_bones  # Store for header
+            num_bones_1185 = rotations.shape[1]
+            
+            # Filter animation data from 1185 bones to 441 bones if mapping exists
+            if bone_mapping_indices is not None and len(bone_mapping_indices) == 441:
+                print(f"Filtering animation from {num_bones_1185} bones to 441 bones using bone mapping...")
+                # Filter rotations: (F, 1185, 4) -> (F, 441, 4)
+                # Select only the bones at the indices specified in bone_mapping_indices
+                # [:, bone_mapping_indices, :] means: all frames, selected bones, all quaternion components
+                rotations = rotations[:, bone_mapping_indices, :]
+                # Filter translations: (F, 1185, 3) -> (F, 441, 3)
+                # [:, bone_mapping_indices, :] means: all frames, selected bones, all translation components
+                translations = translations[:, bone_mapping_indices, :]
+                num_bones = 441
+                animation_num_bones = 441
+                print(f"  Filtered animation: {rotations.shape[0]} frames, {rotations.shape[1]} bones")
+            else:
+                print(f"  Warning: No bone mapping available, keeping all {num_bones_1185} bones")
+                num_bones = num_bones_1185
+                animation_num_bones = num_bones_1185
             
             # Reshape to list of quats/trans
             quats_flat = rotations.reshape(-1, 4) # (N, 4)

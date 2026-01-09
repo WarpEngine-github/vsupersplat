@@ -473,7 +473,7 @@ export class Armature extends SceneObject {
     
     /**
      * Initialize bone mapping for a splat
-     * Allocates palette entries for all bones and maps each splat to its primary bone
+     * Allocates palette entries for all bones and sets up 4-way bone blending textures
      * @param splat The splat to initialize
      * @returns Map of bone index -> palette index
      */
@@ -497,30 +497,31 @@ export class Armature extends SceneObject {
             bonePaletteMap.set(boneIdx, firstBonePaletteIndex + boneIdx);
         }
         
-        // Map each splat to its primary bone (bone with highest weight)
-        const transformIndices = splat.transformTexture.lock() as Uint16Array;
+        // Write bone indices and weights to textures for 4-way blending
+        if (!splat.boneIndicesTexture || !splat.boneWeightsTexture) {
+            throw new Error('Bone indices/weights textures not initialized on splat');
+        }
+        
+        const boneIndicesData = splat.boneIndicesTexture.lock() as Float32Array;
+        const boneWeightsData = splat.boneWeightsTexture.lock() as Float32Array;
         
         for (let splatIdx = 0; splatIdx < numSplats; splatIdx++) {
-            // Find bone with highest weight
-            let maxWeight = 0;
-            let primaryBoneIdx = 0;
-            
+            // Write 4 bone indices (convert to palette indices)
             for (let j = 0; j < 4; j++) {
-                const weight = boneWeights[splatIdx * 4 + j];
-                if (weight > maxWeight) {
-                    maxWeight = weight;
-                    primaryBoneIdx = boneIndices[splatIdx * 4 + j];
-                }
+                const boneIdx = boneIndices[splatIdx * 4 + j];
+                const paletteIndex = bonePaletteMap.get(boneIdx);
+                // Store palette index as float (shader will convert back to uint)
+                boneIndicesData[splatIdx * 4 + j] = paletteIndex !== undefined ? paletteIndex : 0;
             }
             
-            // Map splat to its primary bone's palette index
-            const paletteIndex = bonePaletteMap.get(primaryBoneIdx);
-            if (paletteIndex !== undefined) {
-                transformIndices[splatIdx] = paletteIndex;
+            // Write 4 bone weights (already normalized floats)
+            for (let j = 0; j < 4; j++) {
+                boneWeightsData[splatIdx * 4 + j] = boneWeights[splatIdx * 4 + j];
             }
         }
         
-        splat.transformTexture.unlock();
+        splat.boneIndicesTexture.unlock();
+        splat.boneWeightsTexture.unlock();
         
         return bonePaletteMap;
     }

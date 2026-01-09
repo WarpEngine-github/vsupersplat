@@ -6,6 +6,7 @@ import {
     FILTER_NEAREST,
     PIXELFORMAT_R8,
     PIXELFORMAT_R16U,
+    PIXELFORMAT_RGBA32F,
     Asset,
     BlendState,
     BoundingBox,
@@ -56,6 +57,8 @@ class Splat extends SceneObject {
     changedCounter = 0;
     stateTexture: Texture;
     transformTexture: Texture;
+    boneIndicesTexture?: Texture;  // RGBA32F: 4 bone indices per splat
+    boneWeightsTexture?: Texture;   // RGBA32F: 4 bone weights per splat
     selectionBoundStorage: BoundingBox;
     localBoundStorage: BoundingBox;
     worldBoundStorage: BoundingBox;
@@ -156,6 +159,10 @@ class Splat extends SceneObject {
         // create the state texture
         this.stateTexture = createTexture('splatState', PIXELFORMAT_R8);
         this.transformTexture = createTexture('splatTransform', PIXELFORMAT_R16U);
+        
+        // create bone indices and weights textures (for 4-way bone blending)
+        this.boneIndicesTexture = createTexture('boneIndices', PIXELFORMAT_RGBA32F);
+        this.boneWeightsTexture = createTexture('boneWeights', PIXELFORMAT_RGBA32F);
 
         // create the transform palette
         this.transformPalette = new TransformPalette(device);
@@ -174,6 +181,14 @@ class Splat extends SceneObject {
             material.setDefine('SH_BANDS', `${Math.min(bands, (instance.resource as GSplatResource).shBands)}`);
             material.setParameter('splatState', this.stateTexture);
             material.setParameter('splatTransform', this.transformTexture);
+            if (this.boneIndicesTexture && this.boneWeightsTexture) {
+                material.setParameter('boneIndices', this.boneIndicesTexture);
+                material.setParameter('boneWeights', this.boneWeightsTexture);
+                material.setDefine('USE_BONE_BLENDING', '1');
+            } else {
+                // Remove define by setting to empty string (PlayCanvas will ignore it)
+                material.setDefine('USE_BONE_BLENDING', '');
+            }
             material.update();
         };
 

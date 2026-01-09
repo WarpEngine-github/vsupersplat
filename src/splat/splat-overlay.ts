@@ -85,6 +85,16 @@ class SplatOverlay extends Element {
             material.setParameter('splatPosition', (splat.entity.gsplat.instance.resource as GSplatResource).transformATexture);
             material.setParameter('splatTransform', splat.transformTexture);
             material.setParameter('texParams', [splat.stateTexture.width, splat.stateTexture.height]);
+            
+            // Set up bone blending if textures are available
+            if (splat.boneIndicesTexture && splat.boneWeightsTexture) {
+                material.setParameter('boneIndices', splat.boneIndicesTexture);
+                material.setParameter('boneWeights', splat.boneWeightsTexture);
+                material.setDefine('USE_BONE_BLENDING', '1');
+            } else {
+                material.setDefine('USE_BONE_BLENDING', '');
+            }
+            
             material.update();
 
             meshInstance.node = splat.entity;
@@ -119,6 +129,13 @@ class SplatOverlay extends Element {
             material.setParameter('selectedClr', [selectedClr.r, selectedClr.g, selectedClr.b, selectedClr.a]);
             material.setParameter('unselectedClr', [unselectedClr.r, unselectedClr.g, unselectedClr.b, unselectedClr.a]);
             material.setParameter('transformPalette', this.splat.transformPalette.texture);
+            
+            // Update bone textures if available (they might have changed)
+            if (this.splat.boneIndicesTexture && this.splat.boneWeightsTexture) {
+                material.setParameter('boneIndices', this.splat.boneIndicesTexture);
+                material.setParameter('boneWeights', this.splat.boneWeightsTexture);
+            }
+            
             this.scene.app.drawMeshInstance(this.meshInstance);
         }
     }

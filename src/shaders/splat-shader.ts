@@ -195,23 +195,66 @@ uniform mat4 matrix_projection;
 uniform highp usampler2D splatTransform;        // per-splat index into transform palette
 uniform sampler2D transformPalette;             // palette of transform matrices
 
-mat4 applyPaletteTransform(SplatSource source, mat4 model) {
-    uint transformIndex = texelFetch(splatTransform, source.uv, 0).r;
-    if (transformIndex == 0u) {
-        return model;
+#ifdef USE_BONE_BLENDING
+uniform sampler2D boneIndices;                  // RGBA32F: 4 bone indices per splat
+uniform sampler2D boneWeights;                  // RGBA32F: 4 bone weights per splat
+#endif
+
+mat4 readTransformFromPalette(uint paletteIndex) {
+    if (paletteIndex == 0u) {
+        return mat4(1.0);
     }
-
-    // read transform matrix
-    int u = int(transformIndex % 512u) * 3;
-    int v = int(transformIndex / 512u);
-
+    
+    int u = int(paletteIndex % 512u) * 3;
+    int v = int(paletteIndex / 512u);
+    
     mat4 t;
     t[0] = texelFetch(transformPalette, ivec2(u, v), 0);
     t[1] = texelFetch(transformPalette, ivec2(u + 1, v), 0);
     t[2] = texelFetch(transformPalette, ivec2(u + 2, v), 0);
     t[3] = vec4(0.0, 0.0, 0.0, 1.0);
+    
+    return transpose(t);
+}
 
-    return model * transpose(t);
+mat4 applyPaletteTransform(SplatSource source, mat4 model) {
+    #ifdef USE_BONE_BLENDING
+    // 4-way bone blending
+    vec4 boneIndicesVec = texelFetch(boneIndices, source.uv, 0);
+    vec4 boneWeightsVec = texelFetch(boneWeights, source.uv, 0);
+    
+    // Check if bone blending is active (non-zero weights)
+    float totalWeight = dot(boneWeightsVec, vec4(1.0));
+    if (totalWeight > 0.001) {
+        mat4 blendedTransform = mat4(0.0);
+        
+        for (int i = 0; i < 4; i++) {
+            float weight = boneWeightsVec[i];
+            if (weight > 0.001) {
+                // Convert float palette index back to uint
+                uint paletteIndex = uint(boneIndicesVec[i] + 0.5);
+                mat4 boneTransform = readTransformFromPalette(paletteIndex);
+                blendedTransform += boneTransform * weight;
+            }
+        }
+        
+        // Normalize the blended transform (weights should sum to 1.0, but ensure it)
+        if (totalWeight > 0.001) {
+            blendedTransform /= totalWeight;
+        }
+        
+        return model * blendedTransform;
+    }
+    #endif
+    
+    // Fallback to single transform (original behavior)
+    uint transformIndex = texelFetch(splatTransform, source.uv, 0).r;
+    if (transformIndex == 0u) {
+        return model;
+    }
+    
+    mat4 t = readTransformFromPalette(transformIndex);
+    return model * t;
 }
 
 // project the model space gaussian center to view and clip space

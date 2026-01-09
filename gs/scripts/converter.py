@@ -245,6 +245,7 @@ def process_data(input_path, output_dir, skeleton_path=None):
 
     # Handle Poses
     poses = None
+    animation_num_bones = None
     if 'poses' in data:
         raw_poses = data['poses']
         # Check if 0-d array wrapping a dict
@@ -264,6 +265,7 @@ def process_data(input_path, output_dir, skeleton_path=None):
             
             num_frames = rotations.shape[0]
             num_bones = rotations.shape[1]
+            animation_num_bones = num_bones  # Store for header
             
             # Reshape to list of quats/trans
             quats_flat = rotations.reshape(-1, 4) # (N, 4)
@@ -325,7 +327,6 @@ def process_data(input_path, output_dir, skeleton_path=None):
     header = {
         "numSplats": int(num_splats),
         "numBones": weights.shape[1], # Use weight bones count for shader
-        "numFrames": poses.shape[0] if poses is not None else 0,
         "bounds": {
             "min": means.min(axis=0).tolist(),
             "max": means.max(axis=0).tolist()
@@ -388,6 +389,17 @@ def process_data(input_path, output_dir, skeleton_path=None):
         print("Writing animation.bin...")
         with open(os.path.join(output_dir, "animation.bin"), 'wb') as f:
             f.write(poses.astype(np.float32).tobytes())
+        
+        # Add animation info to header
+        animation_bone_count = animation_num_bones if animation_num_bones is not None else (int(poses.shape[1]) if len(poses.shape) > 1 else None)
+        header["animation"] = {
+            "file": "animation.bin",
+            "format": "float32",
+            "numFrames": int(poses.shape[0]),
+            "numBones": animation_bone_count,
+            "shape": list(poses.shape),
+            "stride": 64  # 16 floats × 4 bytes per bone per frame
+        }
     
     # Write joints.bin if available
     if joints is not None:

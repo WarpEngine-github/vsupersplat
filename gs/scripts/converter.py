@@ -71,6 +71,50 @@ def create_bone_mapping(bone_names_441, skeleton_1185_names):
     
     return np.array(bone_indices, dtype=np.int32)
 
+def cv_to_gl(coords):
+    """
+    Convert coordinates from OpenCV to OpenGL convention.
+    OpenCV: X right, Y down, Z forward (into screen)
+    OpenGL: X right, Y up, Z backward (out of screen)
+    Conversion: (x, y, z) -> (x, -y, -z)
+    """
+    coords = coords.copy()
+    if coords.ndim == 1:
+        # Single 3D point
+        coords[1] = -coords[1]  # Negate Y
+        coords[2] = -coords[2]  # Negate Z
+    elif coords.ndim == 2:
+        # Array of 3D points (N, 3)
+        coords[:, 1] = -coords[:, 1]  # Negate Y
+        coords[:, 2] = -coords[:, 2]  # Negate Z
+    elif coords.ndim == 3:
+        # Array of 3D points (N, M, 3) - e.g., animation translations
+        coords[:, :, 1] = -coords[:, :, 1]  # Negate Y
+        coords[:, :, 2] = -coords[:, :, 2]  # Negate Z
+    return coords
+
+def cv_to_gl_quat(quats):
+    """
+    Convert quaternion rotations from OpenCV to OpenGL convention.
+    When flipping Y and Z axes, quaternion components need adjustment.
+    Conversion: (x, y, z, w) -> (x, -y, -z, w)
+    """
+    quats = quats.copy()
+    if quats.ndim == 1:
+        # Single quaternion (x, y, z, w)
+        if len(quats) == 4:
+            quats[1] = -quats[1]  # Negate Y
+            quats[2] = -quats[2]  # Negate Z
+    elif quats.ndim == 2:
+        # Array of quaternions (N, 4)
+        quats[:, 1] = -quats[:, 1]  # Negate Y
+        quats[:, 2] = -quats[:, 2]  # Negate Z
+    elif quats.ndim == 3:
+        # Array of quaternions (N, M, 4) - e.g., animation rotations
+        quats[:, :, 1] = -quats[:, :, 1]  # Negate Y
+        quats[:, :, 2] = -quats[:, :, 2]  # Negate Z
+    return quats
+
 def process_data(input_path, output_dir, skeleton_path=None):
     print(f"Loading {input_path}...")
     
@@ -360,6 +404,10 @@ def process_data(input_path, output_dir, skeleton_path=None):
                 num_bones = num_bones_1185
                 animation_num_bones = num_bones_1185
             
+            # Convert translations and rotations from OpenCV to OpenGL coordinates
+            translations = cv_to_gl(translations)
+            rotations = cv_to_gl_quat(rotations)
+            
             # Reshape to list of quats/trans
             quats_flat = rotations.reshape(-1, 4) # (N, 4)
             trans_flat = translations.reshape(-1, 3) # (N, 3)
@@ -388,13 +436,24 @@ def process_data(input_path, output_dir, skeleton_path=None):
     num_splats = means.shape[0]
     print(f"Processing {num_splats} splats...")
     
+    # Convert from OpenCV to OpenGL coordinates
+    print("Converting coordinates from OpenCV to OpenGL...")
+    # Convert splat positions
+    means = cv_to_gl(means)
+    
+    # Convert joint positions if available
+    if joints is not None:
+        joints = cv_to_gl(joints)
+    
     # 1. Prepare Splat Data
     print("Decomposing covariance matrices...")
     w, v = np.linalg.eigh(covs) 
     scales = np.sqrt(np.maximum(w, 1e-8))
     dets = np.linalg.det(v)
     v[dets < 0, :, 0] *= -1 
-    rotations = Rotation.from_matrix(v).as_quat() 
+    rotations = Rotation.from_matrix(v).as_quat()
+    # Convert splat rotations from OpenCV to OpenGL coordinates
+    rotations = cv_to_gl_quat(rotations) 
     
     if colors.max() <= 1.0:
         colors = (colors * 255).astype(np.uint8)
@@ -520,6 +579,8 @@ def process_data(input_path, output_dir, skeleton_path=None):
                 # Export rest_translations (joint positions for A-pose)
                 if 'rest_translations' in joints_data:
                     rest_translations = to_np(joints_data['rest_translations'])
+                    # Convert from OpenCV to OpenGL coordinates
+                    rest_translations = cv_to_gl(rest_translations)
                     print(f"  Writing std_male_rest_translations.bin: {rest_translations.shape}")
                     with open(os.path.join(output_dir, "std_male_rest_translations.bin"), 'wb') as f:
                         f.write(rest_translations.astype(np.float32).tobytes())
@@ -536,6 +597,8 @@ def process_data(input_path, output_dir, skeleton_path=None):
                 # Export rest_rotations (joint rotations for A-pose)
                 if 'rest_rotations' in joints_data:
                     rest_rotations = to_np(joints_data['rest_rotations'])
+                    # Convert from OpenCV to OpenGL coordinates
+                    rest_rotations = cv_to_gl_quat(rest_rotations)
                     print(f"  Writing std_male_rest_rotations.bin: {rest_rotations.shape}")
                     with open(os.path.join(output_dir, "std_male_rest_rotations.bin"), 'wb') as f:
                         f.write(rest_rotations.astype(np.float32).tobytes())
@@ -567,6 +630,8 @@ def process_data(input_path, output_dir, skeleton_path=None):
                 # Export comp_translations if available
                 if 'comp_translations' in joints_data:
                     comp_translations = to_np(joints_data['comp_translations'])
+                    # Convert from OpenCV to OpenGL coordinates
+                    comp_translations = cv_to_gl(comp_translations)
                     print(f"  Writing std_male_comp_translations.bin: {comp_translations.shape}")
                     with open(os.path.join(output_dir, "std_male_comp_translations.bin"), 'wb') as f:
                         f.write(comp_translations.astype(np.float32).tobytes())
@@ -583,6 +648,8 @@ def process_data(input_path, output_dir, skeleton_path=None):
                 # Export comp_rotations if available
                 if 'comp_rotations' in joints_data:
                     comp_rotations = to_np(joints_data['comp_rotations'])
+                    # Convert from OpenCV to OpenGL coordinates
+                    comp_rotations = cv_to_gl_quat(comp_rotations)
                     print(f"  Writing std_male_comp_rotations.bin: {comp_rotations.shape}")
                     with open(os.path.join(output_dir, "std_male_comp_rotations.bin"), 'wb') as f:
                         f.write(comp_rotations.astype(np.float32).tobytes())
@@ -599,6 +666,8 @@ def process_data(input_path, output_dir, skeleton_path=None):
                 # Export mesh vertices if available
                 if 'verts' in std_male_model_data:
                     verts = to_np(std_male_model_data['verts'])
+                    # Convert from OpenCV to OpenGL coordinates
+                    verts = cv_to_gl(verts)
                     print(f"  Writing std_male_verts.bin: {verts.shape}")
                     with open(os.path.join(output_dir, "std_male_verts.bin"), 'wb') as f:
                         f.write(verts.astype(np.float32).tobytes())

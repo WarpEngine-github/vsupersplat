@@ -33,13 +33,16 @@ def process_data(input_path, output_dir, skeleton_path=None):
             return x.detach().cpu().numpy()
         return np.array(x)
     
+    
     # Auto-detect skeleton.pt if not provided
     if skeleton_path is None:
         input_dir = os.path.dirname(input_path)
-        for name in ['skeleton.pt', '441-skeleton.pt']:
+        # Check for multiple possible skeleton files
+        for name in ['skeleton.pt', '441-skeleton.pt', '441-MetaHuman.model.pt']:
             candidate = os.path.join(input_dir, name)
             if os.path.exists(candidate):
                 skeleton_path = candidate
+                print(f"  Auto-detected skeleton file: {name}")
                 break
     
     # Load skeleton data if available
@@ -86,18 +89,10 @@ def process_data(input_path, output_dir, skeleton_path=None):
     # Load std_male.model.pt if available
     std_male_model_data = None
     if std_male_model_path:
-        print(f"\nLoading std_male.model.pt from {std_male_model_path}...")
         try:
             std_male_model_data = torch.load(std_male_model_path, map_location='cpu')
-            print(f"  Loaded std_male.model.pt: type={type(std_male_model_data)}")
-            if isinstance(std_male_model_data, dict):
-                print(f"  Keys: {list(std_male_model_data.keys())}")
-            elif hasattr(std_male_model_data, 'shape'):
-                print(f"  Shape: {std_male_model_data.shape}")
         except Exception as e:
             print(f"  Warning: Failed to load std_male.model.pt: {e}")
-            import traceback
-            traceback.print_exc()
     
     # ============================================
     # Temporarily export pickle data for inspection
@@ -245,6 +240,8 @@ def process_data(input_path, output_dir, skeleton_path=None):
 
     # Handle Poses
     poses = None
+    animation_bone_names = None
+    animation_num_bones = None  # Store animation bone count (1185)
     if 'poses' in data:
         raw_poses = data['poses']
         # Check if 0-d array wrapping a dict
@@ -252,18 +249,17 @@ def process_data(input_path, output_dir, skeleton_path=None):
              raw_poses = raw_poses.item()
         
         if isinstance(raw_poses, dict):
-            print("Poses is a dictionary.")
             rotations = raw_poses['rotations'] # (F, B, 4)
             translations = raw_poses['translations'] # (F, B, 3)
             
             rotations = to_np(rotations)
             translations = to_np(translations)
             
-            print(f"Animation Rotations: {rotations.shape}")
-            print(f"Animation Translations: {translations.shape}")
+            print(f"Animation: {rotations.shape[0]} frames, {rotations.shape[1]} bones")
             
             num_frames = rotations.shape[0]
             num_bones = rotations.shape[1]
+            animation_num_bones = num_bones  # Store for header
             
             # Reshape to list of quats/trans
             quats_flat = rotations.reshape(-1, 4) # (N, 4)
@@ -324,8 +320,7 @@ def process_data(input_path, output_dir, skeleton_path=None):
     # Write Header
     header = {
         "numSplats": int(num_splats),
-        "numBones": weights.shape[1], # Use weight bones count for shader
-        "numFrames": poses.shape[0] if poses is not None else 0,
+        "numBones": weights.shape[1], # Use weight bones count for shader (441 bones for skinning weights)
         "bounds": {
             "min": means.min(axis=0).tolist(),
             "max": means.max(axis=0).tolist()
@@ -352,8 +347,7 @@ def process_data(input_path, output_dir, skeleton_path=None):
             "stride": 4  # 1 int32 × 4 bytes
         }
     
-    with open(os.path.join(output_dir, "header.json"), 'w') as f:
-        json.dump(header, f, indent=2)
+    # Note: header.json will be written at the end after all data is written
         
     print("Writing splats.bin (interleaved format)...")
     # Interleaved format: for each splat, write all its data sequentially
@@ -388,6 +382,17 @@ def process_data(input_path, output_dir, skeleton_path=None):
         print("Writing animation.bin...")
         with open(os.path.join(output_dir, "animation.bin"), 'wb') as f:
             f.write(poses.astype(np.float32).tobytes())
+        
+        # Add animation info to header
+        animation_bone_count = animation_num_bones if animation_num_bones is not None else (int(poses.shape[1]) if len(poses.shape) > 1 else None)
+        header["animation"] = {
+            "file": "animation.bin",
+            "format": "float32",
+            "numFrames": int(poses.shape[0]),
+            "numBones": animation_bone_count,
+            "shape": list(poses.shape),
+            "stride": 64  # 16 floats × 4 bytes per bone per frame
+        }
     
     # Write joints.bin if available
     if joints is not None:

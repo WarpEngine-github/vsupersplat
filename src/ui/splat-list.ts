@@ -212,7 +212,7 @@ class SplatList extends Container {
             }
         });
 
-        events.on('selection.changed', (selection: Splat) => {
+        events.on('selection.changed', (selection: SceneObject) => {
             items.forEach((value, key) => {
                 value.selected = key === selection;
             });
@@ -243,9 +243,8 @@ class SplatList extends Container {
         this.on('click', (item: SplatItem) => {
             for (const [key, value] of items) {
                 if (item === value) {
-                    if (key.type === ElementType.splat) {
-                        events.fire('selection', key as Splat);
-                    }
+                    // Fire selection event for both splats and armatures
+                    events.fire('selection', key);
                     key.onSelected();
                     break;
                 }

@@ -5,6 +5,7 @@ import { ElementType } from './element';
 import { Events } from '../events';
 import { PngCompressor } from '../utils/png-compressor';
 import { Scene } from './scene';
+import { SceneObject } from './scene-object';
 import { Splat } from '../splat/splat';
 import { localize } from '../ui/localization';
 
@@ -159,7 +160,7 @@ const registerRenderEvents = (scene: Scene, events: Events) => {
             );
 
             // construct filename
-            const selected = events.invoke('selection') as Splat;
+            const selected = events.invoke('selection') as SceneObject;
             const filename = `${removeExtension(selected?.name ?? 'SuperSplat')}-image.png`;
 
             // download

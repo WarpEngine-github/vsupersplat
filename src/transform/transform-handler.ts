@@ -3,6 +3,7 @@ import { Events } from '../events';
 import { registerPivotEvents } from './pivot';
 import { Splat } from '../splat/splat';
 import { SplatsTransformHandler } from './splats-transform-handler';
+import { SceneObject } from '../core/scene-object';
 
 interface TransformHandler {
     activate: () => void;
@@ -36,12 +37,14 @@ const registerTransformHandlerEvents = (events: Events) => {
     const entityTransformHandler = new EntityTransformHandler(events);
     const splatsTransformHandler = new SplatsTransformHandler(events);
 
-    const update = (splat: Splat) => {
+    const update = (selection: SceneObject) => {
         pop();
-        if (splat) {
-            if (splat.numSelected > 0) {
+        if (selection) {
+            // For splats, check if they have selected gaussians
+            if (selection instanceof Splat && selection.numSelected > 0) {
                 push(splatsTransformHandler);
             } else {
+                // For armatures or splats without selected gaussians, use entity transform
                 push(entityTransformHandler);
             }
         }

@@ -4,6 +4,7 @@ import { EditHistory } from './edit-history';
 import { SelectAllOp, SelectNoneOp, SelectInvertOp, SelectOp, HideSelectionOp, UnhideAllOp, DeleteSelectionOp, ResetOp, MultiOp, AddSplatOp } from './edit-ops';
 import { Events } from '../events';
 import { Scene } from '../core/scene';
+import { SceneObject } from '../core/scene-object';
 import { BufferWriter } from '../serialize/writer';
 import { Splat } from '../splat/splat';
 import { serializePly } from '../splat/splat-serialize';
@@ -26,8 +27,9 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
 
     // get the list of selected splats (currently limited to just a single one)
     const selectedSplats = () => {
-        const selected = events.invoke('selection') as Splat;
-        return selected?.visible ? [selected] : [];
+        const selected = events.invoke('selection') as SceneObject;
+        // Only return splats, not armatures
+        return (selected instanceof Splat && selected.visible) ? [selected] : [];
     };
 
     let lastExportCursor = 0;
@@ -242,8 +244,8 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
 
     // returns true if the selected splat has selected gaussians
     events.function('selection.splats', () => {
-        const splat = events.invoke('selection') as Splat;
-        return splat?.numSelected > 0;
+        const selection = events.invoke('selection') as SceneObject;
+        return (selection instanceof Splat) && selection.numSelected > 0;
     });
 
     events.on('select.all', () => {

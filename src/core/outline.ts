@@ -15,6 +15,7 @@ import {
 import { Element, ElementType } from './element';
 import { vertexShader, fragmentShader } from '../shaders/outline-shader';
 import { Splat } from '../splat/splat';
+import { SceneObject } from './scene-object';
 
 class Outline extends Element {
     entity: Entity;
@@ -37,12 +38,16 @@ class Outline extends Element {
         const layerId = this.scene.overlayLayer.id;
 
         // add selected splat to outline layer
-        this.scene.events.on('selection.changed', (splat: Splat, prev: Splat) => {
-            if (prev) {
-                prev.entity.gsplat.layers = prev.entity.gsplat.layers.filter(id => id !== layerId);
+        this.scene.events.on('selection.changed', (selection: SceneObject, prev: SceneObject) => {
+            // Only handle splats (armatures don't have gsplat entities)
+            const prevSplat = prev instanceof Splat ? prev : null;
+            const currentSplat = selection instanceof Splat ? selection : null;
+            
+            if (prevSplat) {
+                prevSplat.entity.gsplat.layers = prevSplat.entity.gsplat.layers.filter(id => id !== layerId);
             }
-            if (splat) {
-                splat.entity.gsplat.layers = splat.entity.gsplat.layers.concat([layerId]);
+            if (currentSplat) {
+                currentSplat.entity.gsplat.layers = currentSplat.entity.gsplat.layers.concat([layerId]);
             }
         });
 

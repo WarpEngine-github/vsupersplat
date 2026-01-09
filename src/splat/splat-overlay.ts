@@ -15,6 +15,7 @@ import {
 import { ElementType, Element } from '../core/element';
 import { vertexShader, fragmentShader } from '../shaders/splat-overlay-shader';
 import { Splat } from './splat';
+import { SceneObject } from '../core/scene-object';
 
 class SplatOverlay extends Element {
     meshInstance: MeshInstance;
@@ -101,8 +102,13 @@ class SplatOverlay extends Element {
             this.splat = splat;
         };
 
-        events.on('selection.changed', (selection: Splat) => {
-            update(selection);
+        events.on('selection.changed', (selection: SceneObject) => {
+            // Only update overlay for splats (armatures don't have gsplat entities)
+            if (selection instanceof Splat) {
+                update(selection);
+            } else {
+                update(null);
+            }
         });
 
         this.meshInstance = meshInstance;

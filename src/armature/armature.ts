@@ -21,6 +21,12 @@ export class Armature extends SceneObject {
     // Linked splats that use this armature for skinning
     linkedSplats: Set<Splat> = new Set();
     
+    // Map of splat -> (bone index -> palette index) for each linked splat
+    private splatBonePaletteMaps: Map<Splat, Map<number, number>> = new Map();
+    
+    // Cached inverse bind pose matrices (calculated once, reused for all frames)
+    private inverseBindPose: Mat4[] | null = null;
+    
     // Timeline event handlers
     private timelineTimeHandle: any = null;
     private timelineFrameHandle: any = null;
@@ -42,10 +48,15 @@ export class Armature extends SceneObject {
         
         console.log('[Armature.add] Initializing armature:', this.name, 'numBones:', this.numBones, 'numFrames:', this.numFrames);
         
+        // Initialize inverse bind pose (needed for splat skinning)
+        this.initializeInverseBindPose();
+        
         // Initialize bone visualization using rest pose
         const worldTransforms = this.calculateBoneTransforms();
         if (worldTransforms) {
             this.visualizeBones(worldTransforms);
+            // Also initialize splat bone mapping and apply initial transforms
+            this.updateSplats(worldTransforms);
         } else {
             console.warn('[Armature.add] Failed to calculate initial bone transforms');
         }
@@ -96,6 +107,119 @@ export class Armature extends SceneObject {
     remove() {
         this.clearBoneVisualization();
         this.cleanupEventHandlers();
+    }
+    
+    /**
+     * Calculate bind pose world transforms (where splats were bound to skeleton)
+     * Uses joints.bin positions + std_male_rest_rotations
+     * @returns Array of bind pose world transforms, or null if data is unavailable
+     */
+    calculateBindPoseTransforms(): Mat4[] | null {
+        // Check for required data: joints.bin (bind pose positions) + std_male_rest_rotations
+        if (!this.armatureData.joints || 
+            !this.armatureData.stdMaleRestRotations || 
+            !this.armatureData.stdMaleParents) {
+            return null;
+        }
+        
+        const parents = this.armatureData.stdMaleParents!;
+        const numBones = this.numBones;
+        const bindTranslations = this.armatureData.joints; // joints.bin = bind pose positions
+        const bindRotations = this.armatureData.stdMaleRestRotations;
+        
+        // Calculate world transforms by traversing hierarchy
+        const worldTransforms = new Array<Mat4>(numBones);
+        
+        // Find root bones (parent = -1)
+        const rootBones: number[] = [];
+        for (let i = 0; i < numBones; i++) {
+            if (parents[i] === -1) {
+                rootBones.push(i);
+            }
+        }
+        
+        if (rootBones.length === 0) {
+            console.warn('No root bone found (parent = -1), assuming bone 0 is root');
+            rootBones.push(0);
+        }
+        
+        // Helper to get local transform for a bone in bind pose
+        const getLocalTransform = (boneIdx: number): Mat4 => {
+            const localMat = new Mat4();
+            
+            // Use bind pose data: joints.bin positions + std_male_rest_rotations
+            const tx = bindTranslations[boneIdx * 3 + 0];
+            const ty = bindTranslations[boneIdx * 3 + 1];
+            const tz = bindTranslations[boneIdx * 3 + 2];
+            
+            const qx = bindRotations[boneIdx * 4 + 0];
+            const qy = bindRotations[boneIdx * 4 + 1];
+            const qz = bindRotations[boneIdx * 4 + 2];
+            const qw = bindRotations[boneIdx * 4 + 3];
+            
+            // Create transform matrix: T * R
+            localMat.setTRS(new Vec3(tx, ty, tz), new Quat(qx, qy, qz, qw), new Vec3(1, 1, 1));
+            
+            return localMat;
+        };
+        
+        // Initialize all transforms
+        for (let i = 0; i < numBones; i++) {
+            worldTransforms[i] = new Mat4();
+        }
+        
+        // Set root bone world transforms (world = local for root)
+        for (const rootIdx of rootBones) {
+            worldTransforms[rootIdx] = getLocalTransform(rootIdx);
+        }
+        
+        // Traverse hierarchy: process bones in order, accumulating parent transforms
+        for (let boneIdx = 0; boneIdx < numBones; boneIdx++) {
+            // Skip if already processed (root bones)
+            if (rootBones.includes(boneIdx)) {
+                continue;
+            }
+            
+            const parentIdx = parents[boneIdx];
+            
+            if (parentIdx >= 0 && parentIdx < numBones) {
+                // World transform = parent's world transform × local transform
+                const localMat = getLocalTransform(boneIdx);
+                worldTransforms[boneIdx].mul2(worldTransforms[parentIdx], localMat);
+            } else {
+                // Invalid parent - use local transform as world transform
+                worldTransforms[boneIdx] = getLocalTransform(boneIdx);
+            }
+        }
+        
+        return worldTransforms;
+    }
+    
+    /**
+     * Initialize inverse bind pose matrices (calculated once, cached)
+     * These are used to transform from bind pose space to bone local space
+     */
+    private initializeInverseBindPose() {
+        if (this.inverseBindPose !== null) {
+            return; // Already initialized
+        }
+        
+        const bindPose = this.calculateBindPoseTransforms();
+        if (!bindPose) {
+            console.warn('[Armature] Cannot initialize inverse bind pose: bind pose data unavailable');
+            this.inverseBindPose = [];
+            return;
+        }
+        
+        // Calculate inverse of each bind pose transform
+        this.inverseBindPose = bindPose.map(bindMat => {
+            const inv = new Mat4();
+            inv.copy(bindMat);
+            inv.invert();
+            return inv;
+        });
+        
+        console.log(`[Armature] Initialized inverse bind pose for ${this.inverseBindPose.length} bones`);
     }
     
     /**
@@ -288,22 +412,116 @@ export class Armature extends SceneObject {
     /**
      * Update linked splats using bone transforms
      * This applies the bone transforms to the splats' transform palettes
+     * Uses the standard skinning formula: FinalTransform = Current × InverseBind
      * @param worldTransforms Array of world space bone transforms (from calculateBoneTransforms)
      */
     updateSplats(worldTransforms: Mat4[]) {
-        // TODO: Implement mesh deformation
-        // For now, this is a placeholder that will:
-        // 1. Map each splat to its primary bone (from armatureData.weights)
-        // 2. Update the splat's transformPalette with the bone's world transform
-        // 3. Update the splat's transformTexture to point to the correct palette entry
-        // 4. Call splat.updatePositions() to refresh rendering
-        
         if (this.linkedSplats.size === 0) {
             return;
         }
         
-        // Placeholder: mesh deformation not implemented yet
-        // console.log(`[Armature.updateSplats] Would update ${this.linkedSplats.size} linked splats with ${worldTransforms.length} bone transforms`);
+        // Ensure inverse bind pose is initialized
+        if (this.inverseBindPose === null) {
+            this.initializeInverseBindPose();
+        }
+        
+        if (!this.inverseBindPose || this.inverseBindPose.length === 0) {
+            console.warn('[Armature.updateSplats] Inverse bind pose not available, cannot update splats');
+            return;
+        }
+        
+        const { weights } = this.armatureData;
+        if (!weights || !weights.indices || !weights.weights) {
+            console.warn('[Armature.updateSplats] No weights data available');
+            return;
+        }
+        
+        // Calculate final transforms: Current × InverseBind
+        // This transforms from bind pose space to current pose space
+        const finalTransforms = new Array<Mat4>(worldTransforms.length);
+        for (let boneIdx = 0; boneIdx < worldTransforms.length; boneIdx++) {
+            const final = new Mat4();
+            // FinalTransform = Current × InverseBind
+            final.mul2(worldTransforms[boneIdx], this.inverseBindPose[boneIdx]);
+            finalTransforms[boneIdx] = final;
+        }
+        
+        // Update each linked splat
+        for (const splat of this.linkedSplats) {
+            // Get or create bone palette map for this splat
+            let bonePaletteMap = this.splatBonePaletteMaps.get(splat);
+            if (!bonePaletteMap) {
+                // First time: allocate palette entries for all bones and map splats to primary bones
+                bonePaletteMap = this.initializeSplatBoneMapping(splat);
+                this.splatBonePaletteMaps.set(splat, bonePaletteMap);
+            }
+            
+            // Update transform palette with final transforms (Current × InverseBind)
+            const transformPalette = splat.transformPalette;
+            for (let boneIdx = 0; boneIdx < finalTransforms.length; boneIdx++) {
+                const paletteIndex = bonePaletteMap.get(boneIdx);
+                if (paletteIndex !== undefined) {
+                    transformPalette.setTransform(paletteIndex, finalTransforms[boneIdx]);
+                }
+            }
+            
+            // Refresh splat rendering
+            splat.updatePositions();
+        }
+    }
+    
+    /**
+     * Initialize bone mapping for a splat
+     * Allocates palette entries for all bones and maps each splat to its primary bone
+     * @param splat The splat to initialize
+     * @returns Map of bone index -> palette index
+     */
+    private initializeSplatBoneMapping(splat: Splat): Map<number, number> {
+        const { weights } = this.armatureData;
+        if (!weights || !weights.indices || !weights.weights) {
+            throw new Error('Cannot initialize splat bone mapping: no weights data');
+        }
+        
+        const boneIndices = weights.indices;
+        const boneWeights = weights.weights;
+        const numSplats = boneIndices.length / 4;
+        
+        // Allocate palette entries for all bones (one per bone)
+        const transformPalette = splat.transformPalette;
+        const firstBonePaletteIndex = transformPalette.alloc(this.numBones);
+        
+        // Create mapping: bone index -> palette index
+        const bonePaletteMap = new Map<number, number>();
+        for (let boneIdx = 0; boneIdx < this.numBones; boneIdx++) {
+            bonePaletteMap.set(boneIdx, firstBonePaletteIndex + boneIdx);
+        }
+        
+        // Map each splat to its primary bone (bone with highest weight)
+        const transformIndices = splat.transformTexture.lock() as Uint16Array;
+        
+        for (let splatIdx = 0; splatIdx < numSplats; splatIdx++) {
+            // Find bone with highest weight
+            let maxWeight = 0;
+            let primaryBoneIdx = 0;
+            
+            for (let j = 0; j < 4; j++) {
+                const weight = boneWeights[splatIdx * 4 + j];
+                if (weight > maxWeight) {
+                    maxWeight = weight;
+                    primaryBoneIdx = boneIndices[splatIdx * 4 + j];
+                }
+            }
+            
+            // Map splat to its primary bone's palette index
+            const paletteIndex = bonePaletteMap.get(primaryBoneIdx);
+            if (paletteIndex !== undefined) {
+                transformIndices[splatIdx] = paletteIndex;
+            }
+        }
+        
+        splat.transformTexture.unlock();
+        
+        return bonePaletteMap;
     }
     
     clearBoneVisualization() {
@@ -332,10 +550,13 @@ export class Armature extends SceneObject {
     
     linkSplat(splat: Splat) {
         this.linkedSplats.add(splat);
+        // Bone mapping will be initialized on first updateSplats call
     }
     
     unlinkSplat(splat: Splat) {
         this.linkedSplats.delete(splat);
+        // Clean up bone palette map
+        this.splatBonePaletteMaps.delete(splat);
     }
 
     // rename() is inherited from SceneObject, which already uses SceneObjectRenameOp

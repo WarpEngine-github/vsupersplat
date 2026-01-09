@@ -325,6 +325,18 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
 
         scene.add(model);
 
+        // Create Armature if joints.bin and rest rotation data are available
+        const armatureData = (model.asset as any).__armatureData;
+        const animationData = (model.asset as any).__animationData;
+        if (armatureData && armatureData.joints && armatureData.stdMaleRestRotations) {
+            const { Armature } = await import('../armature/armature');
+            const armatureName = (model.name || 'Splat') + '_Armature';
+            const armature = new Armature(armatureName, armatureData, animationData);
+            scene.add(armature);
+            // Link the splat to the armature
+            armature.linkSplat(model);
+        }
+
         return model;
     };
 

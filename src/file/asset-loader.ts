@@ -55,11 +55,14 @@ class AssetLoader {
                 // Binary format: header.json + splats.bin
                 const binaryResult: BinaryGsplatResult = await loadBinaryGsplat(assetSource);
                 asset = wrap(binaryResult.gsplatData);
-                // Store animation data on asset for later use
+                // Store armature and animation data on asset for later use
+                if (binaryResult.armatureData) {
+                    (asset as any).__armatureData = binaryResult.armatureData;
+                }
                 if (binaryResult.animationData) {
                     (asset as any).__animationData = binaryResult.animationData;
-                    (asset as any).__animationHeader = binaryResult.header;
                 }
+                (asset as any).__animationHeader = binaryResult.header;
                 orientation = binaryGsplatOrientation;
             } else {
                 asset = await loadGsplat(this.app.assets, assetSource);

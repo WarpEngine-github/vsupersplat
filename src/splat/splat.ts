@@ -27,8 +27,6 @@ import { vertexShader, fragmentShader, gsplatCenter } from '../shaders/splat-sha
 import { State } from './splat-state';
 import { Transform } from '../transform/transform';
 import { TransformPalette } from '../transform/transform-palette';
-import { SplatAnimation } from './splat-animation';
-import { BinaryGsplatAnimationData } from '../file/loaders/binary-gsplat';
 
 const vec = new Vec3();
 const veca = new Vec3();
@@ -80,7 +78,6 @@ class Splat extends SceneObject {
     measureSelection = -1;
 
     rebuildMaterial: (bands: number) => void;
-    animation: SplatAnimation | null = null;
 
     constructor(asset: Asset, orientation: Vec3) {
         super(ElementType.splat);
@@ -197,10 +194,7 @@ class Splat extends SceneObject {
 
     destroy() {
         // Clean up animation
-        if (this.animation) {
-            this.animation.destroy();
-            this.animation = null;
-        }
+        // Note: Animation cleanup is handled by Armature
         
         super.destroy();
         this.entity.destroy();
@@ -340,19 +334,8 @@ class Splat extends SceneObject {
         // we must update state in case the state data was loaded from ply
         this.updateState();
 
-        // Initialize animation now that scene is available
-        const animationData = (this.asset as any).__animationData as BinaryGsplatAnimationData | undefined;
-        console.log('[Splat.add] Animation data:', animationData ? 'present' : 'missing');
-        if (animationData) {
-            console.log('[Splat.add] Creating SplatAnimation...');
-            try {
-                this.animation = new SplatAnimation(this, animationData, this.scene.events);
-                console.log('[Splat.add] SplatAnimation created successfully');
-            } catch (error) {
-                console.error('[Splat.add] Error creating SplatAnimation:', error);
-            }
-            // Animation is driven by timeline events, not auto-play
-        }
+        // Note: Animation is now handled by Armature, not Splat
+        // Armature is created separately in file-handler.ts when loading binary gsplat files
     }
 
     remove() {

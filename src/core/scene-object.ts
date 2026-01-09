@@ -87,10 +87,13 @@ class SceneObject extends Element {
 
     /**
      * Called when this object is selected
-     * Override in subclasses to handle selection-specific behavior
+     * Fires selection event if no current selection exists
+     * Override in subclasses if special selection behavior is needed
      */
     onSelected() {
-        // Default: no action
+        if (this.scene && !this.scene.events.invoke('selection')) {
+            this.scene.events.fire('selection', this as any);
+        }
     }
 
     /**
@@ -100,6 +103,18 @@ class SceneObject extends Element {
     getDisplayName(): string {
         // Default: capitalize first letter of type
         return this.type.charAt(0).toUpperCase() + this.type.slice(1);
+    }
+
+    /**
+     * Called when this object is moved
+     * Fires a moved event specific to the element type
+     * Override in subclasses if special behavior is needed
+     */
+    protected onMoved() {
+        if (this.scene) {
+            const eventName = `${this.type}.moved` as keyof Events;
+            this.scene.events.fire(eventName, this);
+        }
     }
 }
 

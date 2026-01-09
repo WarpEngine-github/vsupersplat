@@ -299,12 +299,7 @@ class Splat extends SceneObject {
         // Splat-specific name handling if needed
     }
 
-    onSelected() {
-        // Splat-specific selection handling
-        if (this.scene && !this.scene.events.invoke('selection')) {
-            this.scene.events.fire('selection', this);
-        }
-    }
+    // onSelected() is inherited from SceneObject
 
     getDisplayName(): string {
         return 'Splat';
@@ -452,7 +447,7 @@ class Splat extends SceneObject {
 
         this.makeWorldBoundDirty();
 
-        this.scene.events.fire('splat.moved', this);
+        this.onMoved();
     }
 
     makeSelectionBoundDirty() {

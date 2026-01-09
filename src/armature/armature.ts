@@ -112,12 +112,12 @@ export class Armature extends SceneObject {
     
     /**
      * Calculate bind pose world transforms (where splats were bound to skeleton)
-     * Uses joints.bin positions + std_male_rest_rotations
+     * Uses std_male_rest_positions + std_male_rest_rotations
      * @returns Array of bind pose world transforms, or null if data is unavailable
      */
     calculateBindPoseTransforms(): Mat4[] | null {
-        // Check for required data: joints.bin (bind pose positions) + std_male_rest_rotations
-        if (!this.armatureData.joints || 
+        // Check for required data: std_male_rest_positions + std_male_rest_rotations
+        if (!this.armatureData.stdMaleRestTranslations || 
             !this.armatureData.stdMaleRestRotations || 
             !this.armatureData.stdMaleParents) {
             return null;
@@ -125,7 +125,7 @@ export class Armature extends SceneObject {
         
         const parents = this.armatureData.stdMaleParents!;
         const numBones = this.numBones;
-        const bindTranslations = this.armatureData.stdMaleRestTranslations; // joints.bin = bind pose positions
+        const bindTranslations = this.armatureData.stdMaleRestTranslations; // std_male_rest_translations.bin = bind pose positions
         const bindRotations = this.armatureData.stdMaleRestRotations;
         
         // Calculate world transforms by traversing hierarchy
@@ -148,7 +148,7 @@ export class Armature extends SceneObject {
         const getLocalTransform = (boneIdx: number): Mat4 => {
             const localMat = new Mat4();
             
-            // Use bind pose data: joints.bin positions + std_male_rest_rotations
+            // Use bind pose data: std_male_rest_positions + std_male_rest_rotations
             const tx = bindTranslations[boneIdx * 3 + 0];
             const ty = bindTranslations[boneIdx * 3 + 1];
             const tz = bindTranslations[boneIdx * 3 + 2];
@@ -239,7 +239,7 @@ export class Armature extends SceneObject {
                 return null;
             }
         } else {
-            if (!this.armatureData.joints || 
+            if (!this.armatureData.stdMaleRestTranslations || 
                 !this.armatureData.stdMaleRestRotations || 
                 !this.armatureData.stdMaleParents) {
                 return null;

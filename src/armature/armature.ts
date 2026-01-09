@@ -51,16 +51,6 @@ export class Armature extends SceneObject {
         // Initialize inverse bind pose (needed for splat skinning)
         this.initializeInverseBindPose();
         
-        // Initialize bone visualization using rest pose
-        const worldTransforms = this.calculateBoneTransforms();
-        if (worldTransforms) {
-            this.visualizeBones(worldTransforms);
-            // Also initialize splat bone mapping and apply initial transforms
-            this.updateSplats(worldTransforms);
-        } else {
-            console.warn('[Armature.add] Failed to calculate initial bone transforms');
-        }
-        
         // Set up timeline event handlers if we have animation data
         if (this.animationData && this.numFrames > 0) {
             // Helper function to update animation frame from timeline frame/time
@@ -91,7 +81,7 @@ export class Armature extends SceneObject {
                 updateFromTimeline(frame);
             });
             
-            // Set initial frame based on current timeline position
+            // Set initial frame based on current timeline position (default to frame 0)
             const currentTimelineFrame = this.scene.events.invoke('timeline.frame') as number || 0;
             const timelineFrameRate = this.scene.events.invoke('timeline.frameRate') as number || 30;
             const animationFrameRate = 30; // Assume animation is also 30 FPS
@@ -100,7 +90,18 @@ export class Armature extends SceneObject {
                 Math.floor(timeInSeconds * animationFrameRate),
                 this.numFrames - 1
             );
+            // Set initial frame (this will update both visualization and splats)
             this.setFrame(initialFrame);
+        } else {
+            // No animation data: use rest pose
+            const worldTransforms = this.calculateBoneTransforms();
+            if (worldTransforms) {
+                this.visualizeBones(worldTransforms);
+                // Also initialize splat bone mapping and apply initial transforms
+                this.updateSplats(worldTransforms);
+            } else {
+                console.warn('[Armature.add] Failed to calculate initial bone transforms');
+            }
         }
     }
     
@@ -550,7 +551,8 @@ export class Armature extends SceneObject {
     
     linkSplat(splat: Splat) {
         this.linkedSplats.add(splat);
-        // Bone mapping will be initialized on first updateSplats call
+        // Bone mapping and transforms will be initialized when armature is added to scene
+        // (in add() method, which calls setFrame() or updateSplats())
     }
     
     unlinkSplat(splat: Splat) {

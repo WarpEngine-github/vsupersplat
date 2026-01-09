@@ -332,9 +332,10 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
             const { Armature } = await import('../armature/armature');
             const armatureName = (model.name || 'Splat') + '_Armature';
             const armature = new Armature(armatureName, armatureData, animationData);
-            scene.add(armature);
-            // Link the splat to the armature
+            // Link the splat BEFORE adding armature to scene
+            // This ensures splats are linked when add() calls setFrame()
             armature.linkSplat(model);
+            scene.add(armature);
         }
 
         return model;

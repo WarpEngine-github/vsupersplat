@@ -621,6 +621,45 @@ const registerEditorEvents = (events: Events, editHistory: EditHistory, scene: S
         setCameraOverlay(!events.invoke('camera.overlay'));
     });
 
+    // armature visualization
+    let armatureVisualization = true; // Default to visible
+
+    const setArmatureVisualization = async (enabled: boolean) => {
+        if (enabled !== armatureVisualization) {
+            armatureVisualization = enabled;
+            events.fire('armature.visualization', armatureVisualization);
+            
+            // Apply to all armatures in the scene
+            const { Armature } = await import('../armature/armature');
+            scene.elements.forEach(element => {
+                if (element instanceof Armature) {
+                    element.setBoneVisualizationVisible(armatureVisualization);
+                }
+            });
+        }
+    };
+
+    events.function('armature.visualization', () => {
+        return armatureVisualization;
+    });
+
+    events.on('armature.setVisualization', (value: boolean) => {
+        setArmatureVisualization(value);
+    });
+
+    events.on('armature.toggleVisualization', () => {
+        setArmatureVisualization(!events.invoke('armature.visualization'));
+    });
+
+    // Update armature visualization when new armatures are added
+    events.on('scene.elementAdded', (element: Element) => {
+        import('../armature/armature').then(({ Armature }) => {
+            if (element instanceof Armature) {
+                element.setBoneVisualizationVisible(armatureVisualization);
+            }
+        });
+    });
+
     // splat size
 
     let splatSize = 2;

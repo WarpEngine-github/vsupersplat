@@ -75,6 +75,9 @@ class BoxShape extends Element {
     }
 
     onPreRender() {
+        if(!this.pivot.enabled)
+            return;
+
         this.pivot.setLocalScale(this._lenX, this._lenY, this._lenZ);
         this.pivot.getWorldTransform().getTranslation(v);
         this.material.setParameter('boxCen', [v.x, v.y, v.z]);

@@ -8,6 +8,7 @@ import centersSvg from './svg/centers.svg';
 import colorPanelSvg from './svg/color-panel.svg';
 import ringsSvg from './svg/rings.svg';
 import showHideSplatsSvg from './svg/show-hide-splats.svg';
+import showHideArmatureSvg from './svg/show-hide-armature.svg';
 import { Tooltips } from './tooltips';
 
 const createSvg = (svgString: string) => {
@@ -35,6 +36,11 @@ class RightToolbar extends Container {
 
         const showHideSplats = new Button({
             id: 'right-toolbar-show-hide',
+            class: ['right-toolbar-toggle', 'active']
+        });
+
+        const showHideArmature = new Button({
+            id: 'right-toolbar-show-hide-armature',
             class: ['right-toolbar-toggle', 'active']
         });
 
@@ -66,12 +72,14 @@ class RightToolbar extends Container {
         ringsModeToggle.dom.appendChild(centersDom);
         ringsModeToggle.dom.appendChild(ringsDom);
         showHideSplats.dom.appendChild(createSvg(showHideSplatsSvg));
+        showHideArmature.dom.appendChild(createSvg(showHideArmatureSvg));
         cameraFrameSelection.dom.appendChild(createSvg(cameraFrameSelectionSvg));
         cameraReset.dom.appendChild(createSvg(cameraResetSvg));
         colorPanel.dom.appendChild(createSvg(colorPanelSvg));
 
         this.append(ringsModeToggle);
         this.append(showHideSplats);
+        this.append(showHideArmature);
         this.append(new Element({ class: 'right-toolbar-separator' }));
         this.append(cameraFrameSelection);
         this.append(cameraReset);
@@ -81,6 +89,7 @@ class RightToolbar extends Container {
 
         tooltips.register(ringsModeToggle, localize('tooltip.right-toolbar.splat-mode'), 'left');
         tooltips.register(showHideSplats, localize('tooltip.right-toolbar.show-hide'), 'left');
+        tooltips.register(showHideArmature, localize('tooltip.right-toolbar.show-hide-armature'), 'left');
         tooltips.register(cameraFrameSelection, localize('tooltip.right-toolbar.frame-selection'), 'left');
         tooltips.register(cameraReset, localize('tooltip.right-toolbar.reset-camera'), 'left');
         tooltips.register(colorPanel, localize('tooltip.right-toolbar.colors'), 'left');
@@ -93,6 +102,7 @@ class RightToolbar extends Container {
             events.fire('camera.setOverlay', true);
         });
         showHideSplats.on('click', () => events.fire('camera.toggleOverlay'));
+        showHideArmature.on('click', () => events.fire('armature.toggleVisualization'));
         cameraFrameSelection.on('click', () => events.fire('camera.focus'));
         cameraReset.on('click', () => events.fire('camera.reset'));
         colorPanel.on('click', () => events.fire('colorPanel.toggleVisible'));
@@ -106,6 +116,10 @@ class RightToolbar extends Container {
 
         events.on('camera.overlay', (value: boolean) => {
             showHideSplats.class[value ? 'add' : 'remove']('active');
+        });
+
+        events.on('armature.visualization', (value: boolean) => {
+            showHideArmature.class[value ? 'add' : 'remove']('active');
         });
 
         events.on('colorPanel.visible', (visible: boolean) => {

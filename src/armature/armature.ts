@@ -125,7 +125,7 @@ export class Armature extends SceneObject {
         
         const parents = this.armatureData.stdMaleParents!;
         const numBones = this.numBones;
-        const bindTranslations = this.armatureData.joints; // joints.bin = bind pose positions
+        const bindTranslations = this.armatureData.stdMaleRestTranslations; // joints.bin = bind pose positions
         const bindRotations = this.armatureData.stdMaleRestRotations;
         
         // Calculate world transforms by traversing hierarchy
@@ -284,7 +284,7 @@ export class Armature extends SceneObject {
                 }
             } else {
                 // Use rest pose data
-                const restTranslations = this.armatureData.joints!;
+                const restTranslations = this.armatureData.stdMaleRestTranslations!;
                 const restRotations = this.armatureData.stdMaleRestRotations!;
                 
                 const tx = restTranslations[boneIdx * 3 + 0];
@@ -534,6 +534,31 @@ export class Armature extends SceneObject {
             }
         }
         this.boneSpheres = [];
+    }
+    
+    /**
+     * Show or hide bone visualization
+     * @param visible Whether to show the bone spheres
+     */
+    setBoneVisualizationVisible(visible: boolean) {
+        for (const sphere of this.boneSpheres) {
+            if (sphere.scene && sphere.pivot) {
+                sphere.pivot.enabled = visible;
+                this.scene.forceRender = true;
+            }
+        }
+    }
+    
+    /**
+     * Get current bone visualization visibility
+     * @returns true if any bone sphere is visible, false otherwise
+     */
+    getBoneVisualizationVisible(): boolean {
+        if (this.boneSpheres.length === 0) {
+            return false;
+        }
+        // Check if any sphere is visible
+        return this.boneSpheres.some(sphere => sphere.scene && sphere.pivot && sphere.pivot.enabled);
     }
     
     /**

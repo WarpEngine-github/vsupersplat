@@ -73,6 +73,9 @@ class SphereShape extends Element {
     }
 
     onPreRender() {
+        if(!this.pivot.enabled)
+            return;
+
         this.pivot.getWorldTransform().getTranslation(v);
         this.material.setParameter('sphere', [v.x, v.y, v.z, this.radius]);
 

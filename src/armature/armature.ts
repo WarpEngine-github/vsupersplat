@@ -42,8 +42,13 @@ export class Armature extends SceneObject {
         
         console.log('[Armature.add] Initializing armature:', this.name, 'numBones:', this.numBones, 'numFrames:', this.numFrames);
         
-        // Initialize bone visualization
-        this.visualizeBones();
+        // Initialize bone visualization using rest pose
+        const worldTransforms = this.calculateBoneTransforms();
+        if (worldTransforms) {
+            this.visualizeBones(worldTransforms);
+        } else {
+            console.warn('[Armature.add] Failed to calculate initial bone transforms');
+        }
         
         // Set up timeline event handlers if we have animation data
         if (this.animationData && this.numFrames > 0) {
@@ -94,51 +99,30 @@ export class Armature extends SceneObject {
     }
     
     /**
-     * Set animation to a specific frame
-     * Updates bone visualization spheres to follow the animation
-     * Called automatically by timeline.time event listener
+     * Calculate all world space bone transforms for the current frame
+     * Returns an array of Mat4 transforms, one per bone
+     * @param frameIndex Optional frame index for animation. If not provided, uses rest pose.
+     * @returns Array of world space bone transforms, or null if data is unavailable
      */
-    setFrame(frameIndex: number) {
-        if (frameIndex < 0 || (this.numFrames > 0 && frameIndex >= this.numFrames)) return;
-        
-        // Update bone visualization using animation data
-        this.visualizeBones(frameIndex);
-    }
-    
-    /**
-     * Visualize all bones as spheres
-     * If frameIndex is provided, uses animation data (parent-relative transforms)
-     * Otherwise uses std_male rest pose data
-     * Traverses bone hierarchy to calculate world transforms
-     */
-    visualizeBones(frameIndex?: number) {
-        if (!this.scene) {
-            console.warn('Cannot visualize bones: armature not added to scene');
-            return;
-        }
-        
+    calculateBoneTransforms(frameIndex?: number): Mat4[] | null {
         // Check if we should use animation data or rest pose data
         const useAnimation = frameIndex !== undefined && frameIndex >= 0 && this.numFrames > 0 && frameIndex < this.numFrames;
         
         // Check for required data
         if (useAnimation) {
             if (!this.animationData || !this.armatureData.stdMaleParents) {
-                console.warn('Cannot visualize bones: animation data or parents not available');
-                return;
+                return null;
             }
         } else {
             if (!this.armatureData.joints || 
                 !this.armatureData.stdMaleRestRotations || 
                 !this.armatureData.stdMaleParents) {
-                console.warn('Cannot visualize bones: std_male skeleton data not available (need joints, restRotations, and parents)');
-                return;
+                return null;
             }
         }
         
         const parents = this.armatureData.stdMaleParents!;
         const numBones = this.numBones;
-        const bonePos = new Vec3();
-        const boneRot = new Quat();
         
         // Calculate world transforms by traversing hierarchy
         const worldTransforms = new Array<Mat4>(numBones);
@@ -224,6 +208,45 @@ export class Armature extends SceneObject {
             }
         }
         
+        return worldTransforms;
+    }
+    
+    /**
+     * Set animation to a specific frame
+     * Updates bone visualization spheres and linked splats
+     * Called automatically by timeline.time event listener
+     */
+    setFrame(frameIndex: number) {
+        if (frameIndex < 0 || (this.numFrames > 0 && frameIndex >= this.numFrames)) return;
+        
+        // Calculate bone transforms once
+        const worldTransforms = this.calculateBoneTransforms(frameIndex);
+        if (!worldTransforms) {
+            console.warn('[Armature.setFrame] Failed to calculate bone transforms');
+            return;
+        }
+        
+        // Update bone visualization
+        this.visualizeBones(worldTransforms);
+        
+        // Update linked splats (mesh deformation - not implemented yet)
+        this.updateSplats(worldTransforms);
+    }
+    
+    /**
+     * Visualize all bones as spheres using pre-calculated world transforms
+     * @param worldTransforms Array of world space bone transforms (from calculateBoneTransforms)
+     */
+    visualizeBones(worldTransforms: Mat4[]) {
+        if (!this.scene) {
+            console.warn('Cannot visualize bones: armature not added to scene');
+            return;
+        }
+        
+        const numBones = worldTransforms.length;
+        const bonePos = new Vec3();
+        const boneRot = new Quat();
+        
         // Create or update spheres at world positions from transforms
         const spheresNeedCreation = this.boneSpheres.length === 0;
         
@@ -258,8 +281,29 @@ export class Armature extends SceneObject {
         }
         
         if (spheresNeedCreation) {
-            console.log(`Visualized ${this.boneSpheres.length} bones as spheres using ${useAnimation ? 'animation' : 'rest pose'} data (${rootBones.length} root bone(s))`);
+            console.log(`Visualized ${this.boneSpheres.length} bones as spheres`);
         }
+    }
+    
+    /**
+     * Update linked splats using bone transforms
+     * This applies the bone transforms to the splats' transform palettes
+     * @param worldTransforms Array of world space bone transforms (from calculateBoneTransforms)
+     */
+    updateSplats(worldTransforms: Mat4[]) {
+        // TODO: Implement mesh deformation
+        // For now, this is a placeholder that will:
+        // 1. Map each splat to its primary bone (from armatureData.weights)
+        // 2. Update the splat's transformPalette with the bone's world transform
+        // 3. Update the splat's transformTexture to point to the correct palette entry
+        // 4. Call splat.updatePositions() to refresh rendering
+        
+        if (this.linkedSplats.size === 0) {
+            return;
+        }
+        
+        // Placeholder: mesh deformation not implemented yet
+        // console.log(`[Armature.updateSplats] Would update ${this.linkedSplats.size} linked splats with ${worldTransforms.length} bone transforms`);
     }
     
     clearBoneVisualization() {

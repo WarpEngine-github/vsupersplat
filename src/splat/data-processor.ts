@@ -83,7 +83,7 @@ class DataProcessor {
 
     getIntersectResources: (width: number, numSplats: number) => IntersectResources;
     getBoundResources: (splatTextureWidth: number) => BoundResources;
-    getPositionResources: (width: number, height: number, numSplats: number) => PositionResources;
+    getPositionResources: (width: number, height: number, numSplats: number, hasBoneBlending?: boolean) => PositionResources;
 
     constructor(device: GraphicsDevice) {
         this.device = device;
@@ -230,20 +230,37 @@ class DataProcessor {
 
         this.getPositionResources = (() => {
             let shader: Shader = null;
+            let shaderWithBones: Shader = null;
             let texture: Texture = null;
             let renderTarget: RenderTarget = null;
             let data: Float32Array = null;
 
-            return (width: number, height: number, numSplats: number) => {
-                if (!shader) {
-                    shader = ShaderUtils.createShader(device, {
-                        uniqueName: 'calcPositionShader',
-                        attributes: {
-                            vertex_position: SEMANTIC_POSITION
-                        },
-                        vertexGLSL: positionVS,
-                        fragmentGLSL: positionFS
-                    });
+            return (width: number, height: number, numSplats: number, hasBoneBlending: boolean = false) => {
+                // Use different shader instances for bone blending vs no bone blending
+                if (hasBoneBlending) {
+                    if (!shaderWithBones) {
+                        // Create shader with bone blending by prepending the define to fragment shader
+                        const fragmentWithBones = '#define USE_BONE_BLENDING\n' + positionFS;
+                        shaderWithBones = ShaderUtils.createShader(device, {
+                            uniqueName: 'calcPositionShaderBones',
+                            attributes: {
+                                vertex_position: SEMANTIC_POSITION
+                            },
+                            vertexGLSL: positionVS,
+                            fragmentGLSL: fragmentWithBones
+                        });
+                    }
+                } else {
+                    if (!shader) {
+                        shader = ShaderUtils.createShader(device, {
+                            uniqueName: 'calcPositionShader',
+                            attributes: {
+                                vertex_position: SEMANTIC_POSITION
+                            },
+                            vertexGLSL: positionVS,
+                            fragmentGLSL: positionFS
+                        });
+                    }
                 }
 
                 if (!texture || texture.width !== width || texture.height !== height) {
@@ -260,7 +277,12 @@ class DataProcessor {
                     data = new Float32Array(width * height * 4);
                 }
 
-                return { shader, texture, renderTarget, data };
+                return { 
+                    shader: hasBoneBlending ? shaderWithBones : shader, 
+                    texture, 
+                    renderTarget, 
+                    data 
+                };
             };
         })();
     }
@@ -447,15 +469,26 @@ class DataProcessor {
         const splatTransform = splat.transformTexture;
         const transformPalette = splat.transformPalette.texture;
 
-        // allocate resources
-        const resources = this.getPositionResources(transformA.width, transformA.height, numSplats);
+        // Check if bone blending is available
+        const hasBoneBlending = !!(splat.boneIndicesTexture && splat.boneWeightsTexture);
 
-        resolve(scope, {
+        // allocate resources (pass hasBoneBlending to get correct shader)
+        const resources = this.getPositionResources(transformA.width, transformA.height, numSplats, hasBoneBlending);
+
+        const uniforms: any = {
             transformA,
             splatTransform,
             transformPalette,
             splat_params: [transformA.width, numSplats]
-        });
+        };
+
+        // Add bone blending textures if available
+        if (hasBoneBlending) {
+            uniforms.boneIndices = splat.boneIndicesTexture;
+            uniforms.boneWeights = splat.boneWeightsTexture;
+        }
+
+        resolve(scope, uniforms);
 
         device.setBlendState(BlendState.NOBLEND);
         drawQuadWithShader(device, resources.renderTarget, resources.shader);

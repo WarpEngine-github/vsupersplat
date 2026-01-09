@@ -1,7 +1,7 @@
 import { Container, Label, Element as PcuiElement, TextInput } from '@playcanvas/pcui';
 
-import { SplatRenameOp } from '../editor/edit-ops';
-import { Element, ElementType } from '../core/element';
+import { ElementType } from '../core/element';
+import { SceneObject } from '../core/scene-object';
 import { Events } from '../events';
 import { Splat } from '../splat/splat';
 import deleteSvg from './svg/delete.svg';
@@ -173,44 +173,41 @@ class SplatList extends Container {
 
         super(args);
 
-        const items = new Map<Splat, SplatItem>();
+        const items = new Map<SceneObject, SplatItem>();
 
         // edit input used during renames
         const edit = new TextInput({
             id: 'splat-edit'
         });
 
-        events.on('scene.elementAdded', (element: Element) => {
-            if (element.type === ElementType.splat) {
-                const splat = element as Splat;
-                const item = new SplatItem(splat.name, edit);
+        events.on('scene.elementAdded', (element: SceneObject) => {
+            // Handle scene objects (splats and armatures)
+            if (element instanceof SceneObject && (element.type === ElementType.splat || element.type === ElementType.armature)) {
+                const item = new SplatItem(element.name, edit);
                 this.append(item);
-                items.set(splat, item);
+                items.set(element, item);
 
                 item.on('visible', () => {
-                    splat.visible = true;
-
-                    // also select it if there is no other selection
-                    if (!events.invoke('selection')) {
-                        events.fire('selection', splat);
-                    }
+                    element.visible = true;
+                    element.onSelected();
                 });
+                
                 item.on('invisible', () => {
-                    splat.visible = false;
+                    element.visible = false;
                 });
+                
                 item.on('rename', (value: string) => {
-                    events.fire('edit.add', new SplatRenameOp(splat, value));
+                    element.rename(value);
                 });
             }
         });
 
-        events.on('scene.elementRemoved', (element: Element) => {
-            if (element.type === ElementType.splat) {
-                const splat = element as Splat;
-                const item = items.get(splat);
+        events.on('scene.elementRemoved', (element: SceneObject) => {
+            if (element instanceof SceneObject && (element.type === ElementType.splat || element.type === ElementType.armature)) {
+                const item = items.get(element);
                 if (item) {
                     this.remove(item);
-                    items.delete(splat);
+                    items.delete(element);
                 }
             }
         });
@@ -221,50 +218,61 @@ class SplatList extends Container {
             });
         });
 
-        events.on('splat.name', (splat: Splat) => {
-            const item = items.get(splat);
+        // Handle name changes for all scene objects (generic handler)
+        const handleNameChange = (obj: SceneObject) => {
+            const item = items.get(obj);
             if (item) {
-                item.name = splat.name;
+                item.name = obj.name;
             }
-        });
+        };
 
-        events.on('splat.visibility', (splat: Splat) => {
-            const item = items.get(splat);
+        events.on('splat.name', handleNameChange);
+        events.on('armature.name', handleNameChange);
+
+        // Handle visibility changes for all scene objects (generic handler)
+        const handleVisibilityChange = (obj: SceneObject) => {
+            const item = items.get(obj);
             if (item) {
-                item.visible = splat.visible;
+                item.visible = obj.visible;
             }
-        });
+        };
+
+        events.on('splat.visibility', handleVisibilityChange);
+        events.on('armature.visibility', handleVisibilityChange);
 
         this.on('click', (item: SplatItem) => {
             for (const [key, value] of items) {
                 if (item === value) {
-                    events.fire('selection', key);
+                    if (key.type === ElementType.splat) {
+                        events.fire('selection', key as Splat);
+                    }
+                    key.onSelected();
                     break;
                 }
             }
         });
 
         this.on('removeClicked', async (item: SplatItem) => {
-            let splat;
+            let element: SceneObject | null = null;
             for (const [key, value] of items) {
                 if (item === value) {
-                    splat = key;
+                    element = key;
                     break;
                 }
             }
 
-            if (!splat) {
+            if (!element) {
                 return;
             }
 
             const result = await events.invoke('showPopup', {
                 type: 'yesno',
-                header: 'Remove Splat',
-                message: `Are you sure you want to remove '${splat.name}' from the scene? This operation can not be undone.`
+                header: `Remove ${element.getDisplayName()}`,
+                message: `Are you sure you want to remove '${element.name}' from the scene? This operation can not be undone.`
             });
 
             if (result?.action === 'yes') {
-                splat.destroy();
+                element.destroy();
             }
         });
     }

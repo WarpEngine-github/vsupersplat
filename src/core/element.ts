@@ -7,6 +7,7 @@ enum ElementType {
     camera = 'camera',
     model = 'model',
     splat = 'splat',
+    armature = 'armature',
     shadow = 'shadow',
     debug = 'debug',
     other = 'other'
@@ -16,6 +17,7 @@ const ElementTypeList = [
     ElementType.camera,
     ElementType.model,
     ElementType.splat,
+    ElementType.armature,
     ElementType.shadow,
     ElementType.debug,
     ElementType.other
@@ -27,6 +29,7 @@ class Element {
     type: ElementType;
     scene: Scene = null;
     uid: number;
+    _name: string = '';
 
     constructor(type: ElementType) {
         this.type = type;

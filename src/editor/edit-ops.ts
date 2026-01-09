@@ -5,6 +5,7 @@ import { Scene } from '../core/scene';
 import { Splat } from '../splat/splat';
 import { State } from '../splat/splat-state';
 import { Transform } from '../transform/transform';
+import { SceneObject } from '../core/scene-object';
 
 interface EditOp {
     name: string;
@@ -409,24 +410,35 @@ class AddSplatOp {
     }
 }
 
-class SplatRenameOp {
-    name = 'splatRename';
-    splat: Splat;
+class SceneObjectRenameOp {
+    name = 'sceneObjectRename';
+    object: SceneObject;
     oldName: string;
     newName: string;
 
-    constructor(splat: Splat, newName: string) {
-        this.splat = splat;
-        this.oldName = splat.name;
+    constructor(object: SceneObject, newName: string) {
+        this.object = object;
+        this.oldName = object.name;
         this.newName = newName;
     }
 
     do() {
-        this.splat.name = this.newName;
+        this.object.name = this.newName;
     }
 
     undo() {
-        this.splat.name = this.oldName;
+        this.object.name = this.oldName;
+    }
+}
+
+// Keep SplatRenameOp for backward compatibility, but make it use SceneObjectRenameOp
+class SplatRenameOp extends SceneObjectRenameOp {
+    name = 'splatRename';
+    splat: Splat;
+
+    constructor(splat: Splat, newName: string) {
+        super(splat, newName);
+        this.splat = splat;
     }
 }
 
@@ -447,5 +459,6 @@ export {
     SetSplatColorAdjustmentOp,
     MultiOp,
     AddSplatOp,
+    SceneObjectRenameOp,
     SplatRenameOp
 };

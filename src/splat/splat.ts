@@ -20,7 +20,8 @@ import {
     MeshInstance
 } from 'playcanvas';
 
-import { Element, ElementType } from '../core/element';
+import { ElementType } from '../core/element';
+import { SceneObject } from '../core/scene-object';
 import { Serializer } from '../serializer';
 import { vertexShader, fragmentShader, gsplatCenter } from '../shaders/splat-shader';
 import { State } from './splat-state';
@@ -46,7 +47,7 @@ const boundingPoints =
         });
     }).flat(3);
 
-class Splat extends Element {
+class Splat extends SceneObject {
     asset: Asset;
     splatData: GSplatData;
     numSplats = 0;
@@ -63,12 +64,10 @@ class Splat extends Element {
     selectionBoundDirty = true;
     localBoundDirty = true;
     worldBoundDirty = true;
-    _visible = true;
     transformPalette: TransformPalette;
 
     selectionAlpha = 1;
 
-    _name = '';
     _tintClr = new Color(1, 1, 1);
     _temperature = 0;
     _saturation = 1;
@@ -295,15 +294,20 @@ class Splat extends Element {
         return this.entity.getWorldTransform();
     }
 
-    set name(newName: string) {
-        if (newName !== this.name) {
-            this._name = newName;
-            this.scene.events.fire('splat.name', this);
+    protected onNameChanged() {
+        super.onNameChanged();
+        // Splat-specific name handling if needed
+    }
+
+    onSelected() {
+        // Splat-specific selection handling
+        if (this.scene && !this.scene.events.invoke('selection')) {
+            this.scene.events.fire('selection', this);
         }
     }
 
-    get name() {
-        return this._name;
+    getDisplayName(): string {
+        return 'Splat';
     }
 
     get filename() {
@@ -500,15 +504,12 @@ class Splat extends Element {
         return worldBound;
     }
 
-    set visible(value: boolean) {
-        if (value !== this.visible) {
-            this._visible = value;
-            this.scene.events.fire('splat.visibility', this);
+    protected onVisibilityChanged() {
+        super.onVisibilityChanged();
+        // Splat-specific visibility handling if needed
+        if (this.entity) {
+            this.entity.enabled = this.visible;
         }
-    }
-
-    get visible() {
-        return this._visible;
     }
 
     set tintClr(value: Color) {

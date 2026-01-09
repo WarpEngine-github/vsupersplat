@@ -331,6 +331,7 @@ class Splat extends Element {
     }
 
     add() {
+        console.log('[Splat.add] Called');
         // add the entity to the scene
         this.scene.contentRoot.addChild(this.entity);
 
@@ -342,8 +343,15 @@ class Splat extends Element {
 
         // Initialize animation now that scene is available
         const animationData = (this.asset as any).__animationData as BinaryGsplatAnimationData | undefined;
+        console.log('[Splat.add] Animation data:', animationData ? 'present' : 'missing');
         if (animationData) {
-            this.animation = new SplatAnimation(this, animationData, this.scene.events);
+            console.log('[Splat.add] Creating SplatAnimation...');
+            try {
+                this.animation = new SplatAnimation(this, animationData, this.scene.events);
+                console.log('[Splat.add] SplatAnimation created successfully');
+            } catch (error) {
+                console.error('[Splat.add] Error creating SplatAnimation:', error);
+            }
             // Animation is driven by timeline events, not auto-play
         }
     }

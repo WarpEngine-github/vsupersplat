@@ -31,10 +31,12 @@ export class SplatAnimation {
     private timelineFrameHandle: any = null;
     
     constructor(splat: Splat, animationData: BinaryGsplatAnimationData, events: Events) {
+        console.log('[SplatAnimation] Constructor called');
         this.splat = splat;
         this.animationData = animationData;
         this.numFrames = animationData.animation.numFrames;
         this.numBones = animationData.animation.numBones;
+        console.log('[SplatAnimation] numFrames:', this.numFrames, 'numBones:', this.numBones);
         
         // Allocate palette entries for all bones
         // Index 0 is identity (unused), bones start at 1
@@ -90,7 +92,13 @@ export class SplatAnimation {
         this.setFrame(initialFrame);
         
         // Visualize bones as spheres
-        this.visualizeBones();
+        console.log('[SplatAnimation] About to call visualizeBones()...');
+        try {
+            this.visualizeBones();
+            console.log('[SplatAnimation] visualizeBones() completed');
+        } catch (error) {
+            console.error('[SplatAnimation] Error in visualizeBones():', error);
+        }
     }
     
     /**
@@ -129,75 +137,64 @@ export class SplatAnimation {
     
     /**
      * Set animation to a specific frame
-     * Copies bone matrices for that frame to the transform palette
+     * Updates bone visualization spheres to follow the animation
+     * Splats are reset to identity (not animated for now)
      * Called automatically by timeline.time event listener
      */
     setFrame(frameIndex: number) {
-        // return;
         if (frameIndex < 0 || frameIndex >= this.numFrames) return;
-        
-        // TEST: Restore correct transform indices but fill all bone matrices with identity
-        // First, restore the bone mapping (this was commented out in constructor)
-        this.setupSplatBoneMapping();
-        
-        // TEST: Transform only head bone (bone index 9)
-        const headBoneIdx = 9; // "head" bone from skeleton names
-        const yOffset = frameIndex * 0.1;
-        
-        // Fill all bones with identity first
-        const identityMat = new Mat4();
-        for (let boneIdx = 0; boneIdx < this.numBones; boneIdx++) {
-            const paletteIndex = this.bonePaletteIndices.get(boneIdx);
-            if (paletteIndex !== undefined) {
-                this.splat.transformPalette.setTransform(paletteIndex, identityMat);
-            }
+
+        // Reset all splat transforms to identity (index 0 = no transform)
+        const transformIndices = this.splat.transformTexture.lock() as Uint16Array;
+        for (let i = 0; i < transformIndices.length; i++) {
+            transformIndices[i] = 0; // 0 = identity transform
         }
+        this.splat.transformTexture.unlock();
         
-        // Apply upward translation only to head bone
-        const headMat = new Mat4();
-        headMat.setTranslate(0, yOffset, 0);
-        const headPaletteIndex = this.bonePaletteIndices.get(headBoneIdx);
-        if (headPaletteIndex !== undefined) {
-            this.splat.transformPalette.setTransform(headPaletteIndex, headMat);
-        }
+        // Update bone visualization using animation data
+        this.visualizeBones(frameIndex);
         
-        // Trigger position update so splats reflect the transforms
+        // Trigger position update so splats reflect the reset transforms
         this.splat.updatePositions();
     }
     
     /**
-     * Visualize all bones as spheres using std_male A-pose data
+     * Visualize all bones as spheres
+     * If frameIndex is provided, uses animation data (parent-relative transforms)
+     * Otherwise uses std_male rest pose data
      * Traverses bone hierarchy to calculate world transforms
      */
-    visualizeBones() {
-        // Clear existing spheres
-        this.clearBoneVisualization();
-        
+    visualizeBones(frameIndex?: number) {
         if (!this.splat.scene) {
             console.warn('Cannot visualize bones: splat not added to scene');
             return;
         }
         
-        // Check for required std_male data
-        if (!this.animationData.stdMaleRestTranslations || 
-            !this.animationData.stdMaleRestRotations || 
-            !this.animationData.stdMaleParents) {
-            console.warn('Cannot visualize bones: std_male skeleton data not available (need restTranslations, restRotations, and parents)');
-            return;
+        // Check if we should use animation data or rest pose data
+        const useAnimation = frameIndex !== undefined && frameIndex >= 0 && frameIndex < this.numFrames;
+        
+        // Check for required data
+        if (useAnimation) {
+            if (!this.animationData.animation || !this.animationData.stdMaleParents) {
+                console.warn('Cannot visualize bones: animation data or parents not available');
+                return;
+            }
+        } else {
+            if (!this.animationData.joints || 
+                !this.animationData.stdMaleRestRotations || 
+                !this.animationData.stdMaleParents) {
+                console.warn('Cannot visualize bones: std_male skeleton data not available (need joints, restRotations, and parents)');
+                return;
+            }
         }
         
-        const restTranslations = this.animationData.stdMaleRestTranslations;
-        const restRotations = this.animationData.stdMaleRestRotations;
         const parents = this.animationData.stdMaleParents;
-        const numBones = restTranslations.length / 3;
-        
-        if (numBones !== this.numBones || numBones !== parents.length) {
-            console.warn(`Bone count mismatch: ${numBones} std_male bones vs ${this.numBones} animation bones`);
-        }
+        const numBones = this.numBones;
+        const bonePos = new Vec3();
+        const boneRot = new Quat();
         
         // Calculate world transforms by traversing hierarchy
         const worldTransforms = new Array<Mat4>(numBones);
-        const bonePos = new Vec3();
         
         // Find root bones (parent = -1)
         const rootBones: number[] = [];
@@ -212,20 +209,38 @@ export class SplatAnimation {
             rootBones.push(0);
         }
         
-        // Helper to create transform matrix from translation and rotation quaternion
-        const createLocalTransform = (boneIdx: number): Mat4 => {
-            const tx = restTranslations[boneIdx * 3 + 0];
-            const ty = restTranslations[boneIdx * 3 + 1];
-            const tz = restTranslations[boneIdx * 3 + 2];
-            
-            const qx = restRotations[boneIdx * 4 + 0];
-            const qy = restRotations[boneIdx * 4 + 1];
-            const qz = restRotations[boneIdx * 4 + 2];
-            const qw = restRotations[boneIdx * 4 + 3];
-            
-            // Create transform matrix: T * R
+        // Helper to get local transform for a bone
+        const getLocalTransform = (boneIdx: number): Mat4 => {
             const localMat = new Mat4();
-            localMat.setTRS(new Vec3(tx, ty, tz), new Quat(qx, qy, qz, qw), new Vec3(1, 1, 1));
+            
+            if (useAnimation) {
+                // Extract local transform from animation matrix (parent-relative)
+                const animationData = this.animationData.animation.data;
+                const FLOATS_PER_BONE = 16;
+                const offset = frameIndex! * numBones * FLOATS_PER_BONE + boneIdx * FLOATS_PER_BONE;
+                
+                // Copy animation matrix directly
+                for (let i = 0; i < 16; i++) {
+                    localMat.data[i] = animationData[offset + i];
+                }
+            } else {
+                // Use rest pose data
+                const restTranslations = this.animationData.joints!;
+                const restRotations = this.animationData.stdMaleRestRotations!;
+                
+                const tx = restTranslations[boneIdx * 3 + 0];
+                const ty = restTranslations[boneIdx * 3 + 1];
+                const tz = restTranslations[boneIdx * 3 + 2];
+                
+                const qx = restRotations[boneIdx * 4 + 0];
+                const qy = restRotations[boneIdx * 4 + 1];
+                const qz = restRotations[boneIdx * 4 + 2];
+                const qw = restRotations[boneIdx * 4 + 3];
+                
+                // Create transform matrix: T * R
+                localMat.setTRS(new Vec3(tx, ty, tz), new Quat(qx, qy, qz, qw), new Vec3(1, 1, 1));
+            }
+            
             return localMat;
         };
         
@@ -236,7 +251,7 @@ export class SplatAnimation {
         
         // Set root bone world transforms (world = local for root)
         for (const rootIdx of rootBones) {
-            worldTransforms[rootIdx] = createLocalTransform(rootIdx);
+            worldTransforms[rootIdx] = getLocalTransform(rootIdx);
         }
         
         // Traverse hierarchy: process bones in order, accumulating parent transforms
@@ -251,32 +266,50 @@ export class SplatAnimation {
             
             if (parentIdx >= 0 && parentIdx < numBones) {
                 // World transform = parent's world transform × local transform
-                const localMat = createLocalTransform(boneIdx);
+                const localMat = getLocalTransform(boneIdx);
                 worldTransforms[boneIdx].mul2(worldTransforms[parentIdx], localMat);
             } else {
                 // Invalid parent - use local transform as world transform
-                worldTransforms[boneIdx] = createLocalTransform(boneIdx);
+                worldTransforms[boneIdx] = getLocalTransform(boneIdx);
             }
         }
         
-        // Create spheres at world positions from transforms
+        // Create or update spheres at world positions from transforms
+        const spheresNeedCreation = this.boneSpheres.length === 0;
+        
         for (let boneIdx = 0; boneIdx < numBones; boneIdx++) {
-            // Extract translation from world transform matrix
+            // Extract translation and rotation from world transform matrix
             worldTransforms[boneIdx].getTranslation(bonePos);
+            boneRot.setFromMat4(worldTransforms[boneIdx]);
             
-            // Create sphere at bone position
-            const sphere = new SphereShape();
-            // Add to scene FIRST so scene is set before updateBound() is called
-            this.splat.scene.add(sphere);
-            // Then set properties (radius triggers updateBound which needs scene)
-            sphere.radius = 0.01; // Small sphere for bones
-            sphere.pivot.setPosition(bonePos);
-            sphere.moved();
-            
-            this.boneSpheres.push(sphere);
+            if (spheresNeedCreation) {
+                // Create new sphere
+                const sphere = new SphereShape();
+                // Add to scene FIRST so scene is set before updateBound() is called
+                this.splat.scene.add(sphere);
+                // Then set properties (radius triggers updateBound which needs scene)
+                sphere.radius = 0.01; // Small sphere for bones
+                sphere.pivot.setPosition(bonePos);
+                sphere.pivot.setRotation(boneRot);
+                sphere.moved();
+                
+                this.boneSpheres.push(sphere);
+            } else {
+                // Update existing sphere
+                if (boneIdx < this.boneSpheres.length) {
+                    const sphere = this.boneSpheres[boneIdx];
+                    if (sphere && sphere.scene) {
+                        sphere.pivot.setPosition(bonePos);
+                        sphere.pivot.setRotation(boneRot);
+                        sphere.moved();
+                    }
+                }
+            }
         }
         
-        console.log(`Visualized ${this.boneSpheres.length} bones as spheres using std_male hierarchy traversal (${rootBones.length} root bone(s))`);
+        if (spheresNeedCreation) {
+            console.log(`Visualized ${this.boneSpheres.length} bones as spheres using ${useAnimation ? 'animation' : 'rest pose'} data (${rootBones.length} root bone(s))`);
+        }
     }
     
     /**

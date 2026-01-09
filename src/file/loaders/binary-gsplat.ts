@@ -7,11 +7,18 @@ import { AssetSource, createReadSource } from './asset-source';
  */
 interface AssetHeader {
     numSplats: number;
-    numBones: number;
-    numFrames: number;
+    numBones: number;  // Number of bones for skinning weights (441)
     bounds: {
         min: number[];
         max: number[];
+    };
+    animation?: {
+        file: string;
+        format: string;
+        numFrames: number;
+        numBones: number;  // Number of bones in animation (1185)
+        shape: number[];
+        stride: number;
     };
     joints?: {
         count: number;
@@ -144,7 +151,9 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
     console.log(`Loading binary splat: ${numSplats} splats from ${basePath}`);
 
     // Step 2: Load splats.bin
+    console.log('[loadBinaryGsplat] About to fetch splats.bin...');
     const splatsBuffer = await fetchFile('splats.bin');
+    console.log('[loadBinaryGsplat] Successfully loaded splats.bin, size:', splatsBuffer.byteLength);
     const SPLAT_STRIDE = 48; // bytes per splat
     
     if (splatsBuffer.byteLength !== numSplats * SPLAT_STRIDE) {
@@ -245,7 +254,8 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
     // Step 5: Load animation data if available
     let animationData: BinaryGsplatAnimationData | undefined;
     
-    if (header.numBones > 0 && header.numFrames > 0) {
+    if (header.animation && header.animation.numFrames > 0 && header.animation.numBones > 0) {
+        const animationInfo = header.animation;
         try {
             // Load weights.bin (24 bytes per splat: 4×uint16 indices + 4×float32 weights)
             const weightsBuffer = await fetchFile('weights.bin');
@@ -277,10 +287,18 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
             // Load animation.bin (16 floats × numBones × numFrames)
             const animationBuffer = await fetchFile('animation.bin');
             const FLOATS_PER_BONE = 16; // 4×4 matrix
-            const expectedSize = header.numFrames * header.numBones * FLOATS_PER_BONE * 4; // 4 bytes per float
+            let numBones = animationInfo.numBones;
+            const expectedSize = animationInfo.numFrames * numBones * FLOATS_PER_BONE * 4; // 4 bytes per float
             
             if (animationBuffer.byteLength !== expectedSize) {
-                console.warn(`Animation buffer size mismatch! Expected ${expectedSize}, got ${animationBuffer.byteLength}`);
+                // Calculate actual bone count from buffer size
+                const actualBoneCount = (animationBuffer.byteLength / 4) / (animationInfo.numFrames * FLOATS_PER_BONE);
+                if (Number.isInteger(actualBoneCount) && actualBoneCount > 0) {
+                    console.warn(`Animation buffer size mismatch! Expected ${expectedSize} (${numBones} bones), got ${animationBuffer.byteLength} (${actualBoneCount} bones). Using actual bone count.`);
+                    numBones = actualBoneCount;
+                } else {
+                    console.warn(`Animation buffer size mismatch! Expected ${expectedSize}, got ${animationBuffer.byteLength}. Size doesn't match expected format.`);
+                }
             }
 
             const animationArray = new Float32Array(animationBuffer);
@@ -292,12 +310,12 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
                 },
                 animation: {
                     data: animationArray,
-                    numFrames: header.numFrames,
-                    numBones: header.numBones
+                    numFrames: animationInfo.numFrames,
+                    numBones: numBones
                 }
             };
 
-            console.log(`Loaded animation: ${header.numFrames} frames, ${header.numBones} bones`);
+            console.log(`Loaded animation: ${animationInfo.numFrames} frames, ${numBones} bones`);
             
             // Load joints.bin if available (from header.json joints info)
             const headerWithJoints = header as AssetHeader & { 
@@ -417,6 +435,8 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
         }
     }
 
+    console.log('[loadBinaryGsplat] Loading complete. Animation data:', animationData ? 'present' : 'missing');
+    
     return {
         gsplatData,
         animationData,

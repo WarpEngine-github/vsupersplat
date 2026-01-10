@@ -8,6 +8,7 @@ import {
     Entity,
     GraphicsDevice,
     IndexBuffer,
+    Mat4,
     Mesh,
     MeshInstance,
     PRIMITIVE_TRIANGLES,
@@ -90,6 +91,66 @@ function createBlenderBoneMesh(device: GraphicsDevice, length: number, radius: n
     }
     
     vertexOffset = (sphereRings + 1) * (sphereSegments + 1);
+    
+    // Create octahedron extending from sphere along Y axis (forward direction)
+    // Octahedron center is at 10% of the length from the sphere
+    const BONE_LENGTH = 5; // Arbitrary length
+    const octaCenterY = BONE_LENGTH * 0.1; // 10% of length from sphere
+    const octaRadius = radius * 2.0; // Octahedron radius (2x sphere radius)
+    
+    // Octahedron extends from near sphere to full length
+    // The octahedron center is at 10% of length, so it extends from ~0 to ~length
+    const octaTop = BONE_LENGTH; // Top of octahedron (farthest point)
+    const octaBottom = 0; // Bottom of octahedron (at sphere)
+    
+    // Octahedron has 6 vertices: top, bottom, and 4 around the middle
+    const octahedronStartIndex = vertexOffset;
+    
+    // Top vertex of octahedron (at full length)
+    addVertex(0, octaTop, 0, 0, 1, 0);
+    vertexOffset++;
+    
+    // Bottom vertex of octahedron (at sphere)
+    addVertex(0, octaBottom, 0, 0, -1, 0);
+    vertexOffset++;
+    
+    // 4 vertices around the middle (at 10% of length - the octahedron center)
+    const middleY = octaCenterY;
+    const middleVertices: number[] = [];
+    for (let i = 0; i < 4; i++) {
+        const angle = (i / 4) * Math.PI * 2;
+        const x = octaRadius * Math.cos(angle);
+        const z = octaRadius * Math.sin(angle);
+        // Normal points outward from the octahedron face
+        const toTop = octaTop - middleY;
+        const normalLen = Math.sqrt(octaRadius * octaRadius + toTop * toTop);
+        const nx = (x / octaRadius) * (octaRadius / normalLen);
+        const ny = (toTop / normalLen);
+        const nz = (z / octaRadius) * (octaRadius / normalLen);
+        addVertex(x, middleY, z, nx, ny, nz);
+        middleVertices.push(vertexOffset);
+        vertexOffset++;
+    }
+    
+    // Create octahedron faces (8 triangular faces)
+    const topIdx = octahedronStartIndex;
+    const bottomIdx = octahedronStartIndex + 1;
+    
+    // Top 4 faces (pointing upward)
+    for (let i = 0; i < 4; i++) {
+        const next = (i + 1) % 4;
+        const v1 = middleVertices[i];
+        const v2 = middleVertices[next];
+        indices.push(topIdx, v1, v2);
+    }
+    
+    // Bottom 4 faces (pointing downward)
+    for (let i = 0; i < 4; i++) {
+        const next = (i + 1) % 4;
+        const v1 = middleVertices[i];
+        const v2 = middleVertices[next];
+        indices.push(bottomIdx, v2, v1);
+    }
     
     // Convert to interleaved format
     const totalVertices = vertices.length / 3;
@@ -299,15 +360,45 @@ class BoneShape extends Element {
         // Enable the bone
         this.pivot.enabled = true;
         
-        // Simply place the pivot at the joint world position
+        // Place the pivot at the joint world position
         this.pivot.setPosition(position);
         
-        // No rotation needed for now
-        this.pivot.setRotation(new Quat());
+        // Create rotation matrix to extract forward direction
+        const rotMat = new Mat4();
+        rotMat.setTRS(Vec3.ZERO, rotation, Vec3.ONE);
         
-        // Constant scale for the sphere
-        const SPHERE_SCALE = 0.05;
-        this.pivot.setLocalScale(SPHERE_SCALE, SPHERE_SCALE, SPHERE_SCALE);
+        // Extract the X axis from rotation matrix (might be the forward direction)
+        // In some skeletal systems, bones extend along X axis
+        const forwardX = new Vec3();
+        rotMat.getX(forwardX);
+        
+        // Calculate rotation to align bone's local Y axis to the X-forward direction
+        const boneLocalY = new Vec3(0, 1, 0);
+        const alignRotation = new Quat();
+        
+        // Use look-at style rotation: align Y axis to forward direction
+        const dot = boneLocalY.dot(forwardX);
+        if (Math.abs(dot + 1.0) < 0.000001) {
+            // Vectors are opposite, rotate 180 degrees
+            const perp = new Vec3(0, 0, 1);
+            alignRotation.setFromAxisAngle(perp, Math.PI);
+        } else if (Math.abs(dot - 1.0) < 0.000001) {
+            // Vectors are parallel, no rotation needed
+            alignRotation.set(0, 0, 0, 1); // Identity quaternion
+        } else {
+            // Calculate rotation using cross product and angle
+            const axis = new Vec3();
+            axis.cross(boneLocalY, forwardX).normalize();
+            const angle = Math.acos(dot);
+            alignRotation.setFromAxisAngle(axis, angle);
+        }
+        
+        // Apply the alignment rotation
+        this.pivot.setRotation(alignRotation);
+        
+        // Constant scale for the bone
+        const BONE_SCALE = 0.05;
+        this.pivot.setLocalScale(BONE_SCALE, BONE_SCALE, BONE_SCALE);
         
         this.updateBound();
     }

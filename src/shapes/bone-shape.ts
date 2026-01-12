@@ -187,11 +187,15 @@ private createCylinder(config: CylinderConfig): { entity: Entity; material: Shad
         // Render parent sphere
         this.pivot.getWorldTransform().getTranslation(v);
         this.material.setParameter('sphere', [v.x, v.y, v.z, this._radius]);
+        // Ensure color is set
+        this.material.setParameter('sphereColor', [this._parentColor.x, this._parentColor.y, this._parentColor.z]);
         
         // Render joint sphere if it exists
         if (this.jointPivot) {
             this.jointPivot.getWorldTransform().getTranslation(v);
             this.jointMaterial!.setParameter('sphere', [v.x, v.y, v.z, this._jointRadius]);
+            // Ensure color is set
+            this.jointMaterial!.setParameter('sphereColor', [this._jointColor.x, this._jointColor.y, this._jointColor.z]);
         }
         
         // Update cylinder uniforms if it exists
@@ -203,6 +207,8 @@ private createCylinder(config: CylinderConfig): { entity: Entity; material: Shad
                 // Update cylinder start/end positions (world space)
                 this.cylinderMaterial.setParameter('startPosition', [parentPos.x, parentPos.y, parentPos.z]);
                 this.cylinderMaterial.setParameter('endPosition', [jointPos.x, jointPos.y, jointPos.z]);
+                // Ensure color is set
+                this.cylinderMaterial.setParameter('cylinderColor', [this._cylinderColor.x, this._cylinderColor.y, this._cylinderColor.z]);
             }
         }
     }

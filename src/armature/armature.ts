@@ -402,6 +402,20 @@ export class Armature extends SceneObject {
                 boneMesh.pivot.enabled = true;
                 
                 this.boneMeshes.push(boneMesh);
+            } else {
+                // UPDATE existing bone mesh positions
+                const boneMesh = this.boneMeshes[boneIdx];
+                if (boneMesh) {
+                    const parentIdx = this.armatureData.stdMaleParents![boneIdx];
+                    // Check if bone has a valid parent
+                    if (parentIdx >= 0 && parentIdx < bonePositions.length) {
+                        boneMesh.setPivotPosition(bonePositions[parentIdx]);
+                        boneMesh.setJointPosition(bonePositions[boneIdx]);
+                    } else {
+                        boneMesh.setPivotPosition(bonePositions[boneIdx]);
+                        boneMesh.setJointPosition(null);
+                    }
+                }
             }
         }
         

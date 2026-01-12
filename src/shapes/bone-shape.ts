@@ -104,13 +104,10 @@ private createCylinder(config: CylinderConfig): { entity: Entity; material: Shad
     // Position at start position (parent location) - world space position equals start position
     entity.setLocalPosition(config.startPosition);
     
-    // Use a fixed, large scale that always covers the entire cylinder regardless of viewing angle
-    // This prevents clipping and deformation issues
+    // Use a scale large enough to cover the cylinder from any angle
     const axis = new Vec3();
     axis.sub2(config.endPosition, config.startPosition);
     const length = axis.length();
-    // Use a scale large enough to cover the cylinder from any angle
-    // The diagonal distance from start to end plus radius on all sides
     const maxDim = Math.max(length + config.radius * 2, config.radius * 4) * 2;
     entity.setLocalScale(maxDim, maxDim, maxDim);
 
@@ -147,7 +144,7 @@ private createCylinder(config: CylinderConfig): { entity: Entity; material: Shad
             position: new Vec3(0, 0, 0),  // Will be set via setPivotPosition
             radius: this._radius,
             color: this._parentColor,
-            depthOffset: 0.0  // No offset for parent
+            depthOffset: -0.005  // Negative offset to render in front of cylinder
         };
         const parentSphere = this.createSphere(parentConfig);
         this.pivot = parentSphere.entity;
@@ -215,26 +212,49 @@ private createCylinder(config: CylinderConfig): { entity: Entity; material: Shad
     }
 
     updateBound() {
-        // Update bound to include both spheres
+        // Update bound to include both spheres AND cylinder using WORLD positions
         if (this.jointPivot) {
-            const parentPos = this.pivot.getPosition();
-            const jointPos = this.jointPivot.getPosition();
+            // Get world positions to account for all parent transforms
+            this.pivot.getWorldTransform().getTranslation(v);
+            const parentWorldPos = v.clone();
+            this.jointPivot.getWorldTransform().getTranslation(v);
+            const jointWorldPos = v.clone();
             
+            // Calculate bounds that encompass:
+            // 1. Parent sphere (center: parentWorldPos, radius: _radius)
+            // 2. Joint sphere (center: jointWorldPos, radius: _jointRadius)
+            // 3. Cylinder (from parentWorldPos to jointWorldPos, radius: _radius * 0.8)
+            //    The cylinder extends radius units in ALL perpendicular directions
+            
+            const maxSphereRadius = Math.max(this._radius, this._jointRadius);
+            const cylinderRadius = this._radius * 0.8;
+            // Use maximum radius to expand bounds in all directions
+            const maxRadius = Math.max(maxSphereRadius, cylinderRadius);
+            
+            // Find axis-aligned bounding box of line segment, then expand by maxRadius
+            const minX = Math.min(parentWorldPos.x, jointWorldPos.x) - maxRadius;
+            const maxX = Math.max(parentWorldPos.x, jointWorldPos.x) + maxRadius;
+            const minY = Math.min(parentWorldPos.y, jointWorldPos.y) - maxRadius;
+            const maxY = Math.max(parentWorldPos.y, jointWorldPos.y) + maxRadius;
+            const minZ = Math.min(parentWorldPos.z, jointWorldPos.z) - maxRadius;
+            const maxZ = Math.max(parentWorldPos.z, jointWorldPos.z) + maxRadius;
+            
+            // Set center and half extents
             bound.center.set(
-                (parentPos.x + jointPos.x) / 2,
-                (parentPos.y + jointPos.y) / 2,
-                (parentPos.z + jointPos.z) / 2
+                (minX + maxX) / 2,
+                (minY + maxY) / 2,
+                (minZ + maxZ) / 2
             );
             
-            // Calculate half extents to encompass both spheres (use max radius)
-            const maxRadius = Math.max(this._radius, this._jointRadius);
-            const dx = Math.abs(jointPos.x - parentPos.x) / 2 + maxRadius;
-            const dy = Math.abs(jointPos.y - parentPos.y) / 2 + maxRadius;
-            const dz = Math.abs(jointPos.z - parentPos.z) / 2 + maxRadius;
-            bound.halfExtents.set(dx, dy, dz);
+            bound.halfExtents.set(
+                (maxX - minX) / 2,
+                (maxY - minY) / 2,
+                (maxZ - minZ) / 2
+            );
         } else {
-            // Only parent sphere
-            bound.center.copy(this.pivot.getPosition());
+            // Only parent sphere - use world position
+            this.pivot.getWorldTransform().getTranslation(v);
+            bound.center.copy(v);
             bound.halfExtents.set(this._radius, this._radius, this._radius);
         }
         
@@ -280,7 +300,7 @@ private createCylinder(config: CylinderConfig): { entity: Entity; material: Shad
                     position: position,
                     radius: this._jointRadius,
                     color: this._jointColor,
-                    depthOffset: -0.01  // Negative offset makes joints render above parents
+                    depthOffset: -0.01  // Most negative offset - joints render on top of everything
                 };
                 const jointSphere = this.createSphere(jointConfig);
                 this.jointPivot = jointSphere.entity;
@@ -294,7 +314,7 @@ private createCylinder(config: CylinderConfig): { entity: Entity; material: Shad
                     endPosition: position,
                     radius: this._radius * 0.8,  // Slightly smaller than parent sphere
                     color: this._cylinderColor,
-                    depthOffset: 0.001  // Render behind spheres
+                    depthOffset: 0.002  // Positive offset - render behind all spheres
                 };
                 const cylinderResult = this.createCylinder(cylinderConfig);
                 this.cylinder = cylinderResult.entity;

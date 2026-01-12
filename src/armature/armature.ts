@@ -388,16 +388,19 @@ export class Armature extends SceneObject {
                 this.scene.add(boneMesh);
                 // Set radius after adding to scene
                 boneMesh.radius = 0.025; // Increased radius for better visibility
-                this.boneMeshes.push(boneMesh);
-            }
-            
-            // Update bone mesh position
-            if (boneIdx < this.boneMeshes.length) {
-                const boneMesh = this.boneMeshes[boneIdx];
-                if (boneMesh && boneMesh.scene && boneMesh.pivot) {
+
+                const parentIdx = this.armatureData.stdMaleParents![boneIdx];
+                // Check if bone has a valid parent
+                if (parentIdx >= 0 && parentIdx < bonePositions.length) {
+                    boneMesh.setPosition(bonePositions[parentIdx]);
+                    boneMesh.jointLocation = bonePositions[boneIdx];
+                } else {
                     boneMesh.setPosition(bonePositions[boneIdx]);
-                    boneMesh.pivot.enabled = true;
+                    boneMesh.jointLocation = null;
                 }
+                boneMesh.pivot.enabled = true;
+                
+                this.boneMeshes.push(boneMesh);
             }
         }
         

@@ -386,17 +386,18 @@ export class Armature extends SceneObject {
                 const boneMesh = new BoneShape();
                 // Add to scene FIRST so scene is set before updateBound() is called
                 this.scene.add(boneMesh);
-                // Set radius after adding to scene
-                boneMesh.radius = 0.025; // Increased radius for better visibility
+                // Set radii after adding to scene (joint can be slightly smaller)
+                boneMesh.radius = 0.025; // Parent sphere radius
+                boneMesh.jointRadius = 0.01; // Joint sphere radius (slightly smaller)
 
                 const parentIdx = this.armatureData.stdMaleParents![boneIdx];
                 // Check if bone has a valid parent
                 if (parentIdx >= 0 && parentIdx < bonePositions.length) {
-                    boneMesh.setPosition(bonePositions[parentIdx]);
-                    boneMesh.jointLocation = bonePositions[boneIdx];
+                    boneMesh.setPivotPosition(bonePositions[parentIdx]);
+                    boneMesh.setJointPosition(bonePositions[boneIdx]);
                 } else {
-                    boneMesh.setPosition(bonePositions[boneIdx]);
-                    boneMesh.jointLocation = null;
+                    boneMesh.setPivotPosition(bonePositions[boneIdx]);
+                    boneMesh.setJointPosition(null);
                 }
                 boneMesh.pivot.enabled = true;
                 

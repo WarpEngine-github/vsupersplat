@@ -204,16 +204,16 @@ mat4 readTransformFromPalette(uint paletteIndex) {
     if (paletteIndex == 0u) {
         return mat4(1.0);
     }
-    
+
     int u = int(paletteIndex % 512u) * 3;
     int v = int(paletteIndex / 512u);
-    
+
     mat4 t;
     t[0] = texelFetch(transformPalette, ivec2(u, v), 0);
     t[1] = texelFetch(transformPalette, ivec2(u + 1, v), 0);
     t[2] = texelFetch(transformPalette, ivec2(u + 2, v), 0);
     t[3] = vec4(0.0, 0.0, 0.0, 1.0);
-    
+
     return transpose(t);
 }
 

@@ -272,32 +272,32 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
     let numBonesFromWeights: number | undefined;
     
     try {
-        const weightsBuffer = await fetchFile('weights.bin');
-        const WEIGHT_STRIDE = 24; // bytes per splat
-        
-        if (weightsBuffer.byteLength !== numSplats * WEIGHT_STRIDE) {
-            console.warn(`Weights buffer size mismatch! Expected ${numSplats * WEIGHT_STRIDE}, got ${weightsBuffer.byteLength}`);
-        }
+            const weightsBuffer = await fetchFile('weights.bin');
+            const WEIGHT_STRIDE = 24; // bytes per splat
+            
+            if (weightsBuffer.byteLength !== numSplats * WEIGHT_STRIDE) {
+                console.warn(`Weights buffer size mismatch! Expected ${numSplats * WEIGHT_STRIDE}, got ${weightsBuffer.byteLength}`);
+            }
 
-        const weightsData = new DataView(weightsBuffer);
+            const weightsData = new DataView(weightsBuffer);
         boneIndices = new Uint16Array(numSplats * 4);
         boneWeights = new Float32Array(numSplats * 4);
-        
-        let weightsOffset = 0;
-        for (let i = 0; i < numSplats; i++) {
-            // Bone indices (8 bytes: 4×uint16)
-            for (let j = 0; j < 4; j++) {
-                boneIndices[i * 4 + j] = weightsData.getUint16(weightsOffset + j * 2, littleEndian);
-            }
-            weightsOffset += 8;
             
-            // Bone weights (16 bytes: 4×float32)
-            for (let j = 0; j < 4; j++) {
-                boneWeights[i * 4 + j] = weightsData.getFloat32(weightsOffset + j * 4, littleEndian);
+            let weightsOffset = 0;
+            for (let i = 0; i < numSplats; i++) {
+                // Bone indices (8 bytes: 4×uint16)
+                for (let j = 0; j < 4; j++) {
+                    boneIndices[i * 4 + j] = weightsData.getUint16(weightsOffset + j * 2, littleEndian);
+                }
+                weightsOffset += 8;
+                
+                // Bone weights (16 bytes: 4×float32)
+                for (let j = 0; j < 4; j++) {
+                    boneWeights[i * 4 + j] = weightsData.getFloat32(weightsOffset + j * 4, littleEndian);
+                }
+                weightsOffset += 16;
             }
-            weightsOffset += 16;
-        }
-        
+
         // Determine number of bones from weights (max bone index + 1)
         if (boneIndices.length > 0) {
             numBonesFromWeights = Math.max(...Array.from(boneIndices)) + 1;
@@ -361,10 +361,10 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
     }
     
     // Load armature data (joints, skeleton, std_male) independently of animation
-    const headerWithJoints = header as AssetHeader & { 
-        joints?: { count: number; file: string; format: string; stride: number };
-        skeleton?: { count: number; file: string; format: string; stride: number };
-    };
+            const headerWithJoints = header as AssetHeader & { 
+                joints?: { count: number; file: string; format: string; stride: number };
+                skeleton?: { count: number; file: string; format: string; stride: number };
+            };
     
     // Create armatureData if we have joints or skeleton data but no armatureData yet
     if (!armatureData && (headerWithJoints.joints || headerWithJoints.skeleton)) {
@@ -393,43 +393,43 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
     
     // Load joints.bin if available
     if (headerWithJoints.joints && armatureData) {
-        try {
-            const jointsBuffer = await fetchFile('joints.bin');
-            const FLOATS_PER_JOINT = 3; // x, y, z
-            const jointsInfo = headerWithJoints.joints;
-            const expectedJointsSize = jointsInfo.count * FLOATS_PER_JOINT * 4; // 4 bytes per float
-            
-            if (jointsBuffer.byteLength === expectedJointsSize) {
-                const jointsArray = new Float32Array(jointsBuffer);
+                try {
+                    const jointsBuffer = await fetchFile('joints.bin');
+                    const FLOATS_PER_JOINT = 3; // x, y, z
+                    const jointsInfo = headerWithJoints.joints;
+                    const expectedJointsSize = jointsInfo.count * FLOATS_PER_JOINT * 4; // 4 bytes per float
+                    
+                    if (jointsBuffer.byteLength === expectedJointsSize) {
+                        const jointsArray = new Float32Array(jointsBuffer);
                 armatureData.joints = jointsArray;
-                console.log(`Loaded joints: ${jointsArray.length / 3} joint positions`);
-            } else {
-                console.warn(`Joints buffer size mismatch! Expected ${expectedJointsSize}, got ${jointsBuffer.byteLength}`);
+                        console.log(`Loaded joints: ${jointsArray.length / 3} joint positions`);
+                    } else {
+                        console.warn(`Joints buffer size mismatch! Expected ${expectedJointsSize}, got ${jointsBuffer.byteLength}`);
+                    }
+                } catch (error) {
+                    console.warn('Failed to load joints data:', error);
+                    // Continue without joints
+                }
             }
-        } catch (error) {
-            console.warn('Failed to load joints data:', error);
-            // Continue without joints
-        }
-    }
-    
-    // Load skeleton.bin if available (bone hierarchy: parent indices)
-    if (headerWithJoints.skeleton && armatureData) {
-        try {
-            const skeletonBuffer = await fetchFile('skeleton.bin');
-            const skeletonInfo = headerWithJoints.skeleton;
-            const expectedSkeletonSize = skeletonInfo.count * 4; // 4 bytes per int32
             
-            if (skeletonBuffer.byteLength === expectedSkeletonSize) {
-                const skeletonArray = new Int32Array(skeletonBuffer);
+            // Load skeleton.bin if available (bone hierarchy: parent indices)
+    if (headerWithJoints.skeleton && armatureData) {
+                try {
+                    const skeletonBuffer = await fetchFile('skeleton.bin');
+                    const skeletonInfo = headerWithJoints.skeleton;
+                    const expectedSkeletonSize = skeletonInfo.count * 4; // 4 bytes per int32
+                    
+                    if (skeletonBuffer.byteLength === expectedSkeletonSize) {
+                        const skeletonArray = new Int32Array(skeletonBuffer);
                 armatureData.skeleton = skeletonArray;
-                console.log(`Loaded skeleton hierarchy: ${skeletonArray.length} bones`);
-            } else {
-                console.warn(`Skeleton buffer size mismatch! Expected ${expectedSkeletonSize}, got ${skeletonBuffer.byteLength}`);
-            }
-        } catch (error) {
-            console.warn('Failed to load skeleton data:', error);
-            // Continue without skeleton
-        }
+                        console.log(`Loaded skeleton hierarchy: ${skeletonArray.length} bones`);
+                    } else {
+                        console.warn(`Skeleton buffer size mismatch! Expected ${expectedSkeletonSize}, got ${skeletonBuffer.byteLength}`);
+                    }
+                } catch (error) {
+                    console.warn('Failed to load skeleton data:', error);
+                    // Continue without skeleton
+                }
     }
     
     // Load std_male skeleton data if available (rest translations, rotations, and parents)
@@ -493,15 +493,15 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
                     console.log(`Loaded std_male parents: ${stdMaleArray.length} bone hierarchy entries`);
                 } else {
                     console.warn(`Std male parents buffer size mismatch! Expected ${expectedStdMaleSize}, got ${stdMaleBuffer.byteLength}`);
-                }
-            } catch (error) {
+            }
+        } catch (error) {
                 console.warn('Failed to load std_male parents:', error);
             }
         }
     }
 
     console.log('[loadBinaryGsplat] Loading complete. Armature data:', armatureData ? 'present' : 'missing', 'Animation data:', animationData ? 'present' : 'missing');
-    
+
     return {
         gsplatData,
         armatureData,

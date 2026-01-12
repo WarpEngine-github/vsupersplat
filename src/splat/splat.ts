@@ -265,9 +265,9 @@ class Splat extends SceneObject {
         const { sorter } = this.entity.gsplat.instance;
         const { centers } = sorter;
         for (let i = 0; i < this.splatData.numSplats; ++i) {
-            centers[i * 3 + 0] = data[i * 4];
-            centers[i * 3 + 1] = data[i * 4 + 1];
-            centers[i * 3 + 2] = data[i * 4 + 2];
+                centers[i * 3 + 0] = data[i * 4];
+                centers[i * 3 + 1] = data[i * 4 + 1];
+                centers[i * 3 + 2] = data[i * 4 + 2];
         }
 
         this.updateSorting();
@@ -468,8 +468,8 @@ class Splat extends SceneObject {
         if (this.selectionBoundDirty) {
             // Don't calculate bounds during rendering to avoid nested render passes
             if (!this.scene.isRendering) {
-                this.scene.dataProcessor.calcBound(this, selectionBound, true);
-                this.selectionBoundDirty = false;
+            this.scene.dataProcessor.calcBound(this, selectionBound, true);
+            this.selectionBoundDirty = false;
             }
             // If rendering, return cached bound (may be stale, but prevents nested render pass)
         }
@@ -482,9 +482,9 @@ class Splat extends SceneObject {
         if (this.localBoundDirty) {
             // Don't calculate bounds during rendering to avoid nested render passes
             if (!this.scene.isRendering) {
-                this.scene.dataProcessor.calcBound(this, localBound, false);
-                this.localBoundDirty = false;
-                this.entity.getWorldTransform().transformPoint(localBound.center, vec);
+            this.scene.dataProcessor.calcBound(this, localBound, false);
+            this.localBoundDirty = false;
+            this.entity.getWorldTransform().transformPoint(localBound.center, vec);
             }
             // If rendering, return cached bound (may be stale, but prevents nested render pass)
         }

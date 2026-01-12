@@ -451,7 +451,7 @@ def process_data(input_path, output_dir, skeleton_path=None):
     scales = np.sqrt(np.maximum(w, 1e-8))
     dets = np.linalg.det(v)
     v[dets < 0, :, 0] *= -1 
-    rotations = Rotation.from_matrix(v).as_quat()
+    rotations = Rotation.from_matrix(v).as_quat() 
     # Convert splat rotations from OpenCV to OpenGL coordinates
     rotations = cv_to_gl_quat(rotations) 
     

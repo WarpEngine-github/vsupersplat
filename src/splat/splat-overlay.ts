@@ -105,7 +105,7 @@ class SplatOverlay extends Element {
         events.on('selection.changed', (selection: SceneObject) => {
             // Only update overlay for splats (armatures don't have gsplat entities)
             if (selection instanceof Splat) {
-                update(selection);
+            update(selection);
             } else {
                 update(null);
             }

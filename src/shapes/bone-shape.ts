@@ -1,25 +1,16 @@
 import {
     BLENDEQUATION_ADD,
+    BLENDMODE_ONE,
     BLENDMODE_ONE_MINUS_SRC_ALPHA,
     BLENDMODE_SRC_ALPHA,
+    CULLFACE_FRONT,
     BlendState,
     BoundingBox,
     DepthState,
     Entity,
-    GraphicsDevice,
-    IndexBuffer,
     Mat4,
-    Mesh,
-    MeshInstance,
-    PRIMITIVE_TRIANGLES,
-    SEMANTIC_NORMAL,
-    SEMANTIC_POSITION,
     ShaderMaterial,
-    TYPE_FLOAT32,
-    VertexBuffer,
-    VertexFormat,
-    Vec3,
-    Quat
+    Vec3
 } from 'playcanvas';
 
 import { Element, ElementType } from '../core/element';
@@ -28,415 +19,173 @@ import { Serializer } from '../serializer';
 const v = new Vec3();
 const bound = new BoundingBox();
 
-/**
- * Creates a Blender-style bone mesh: two spheres at ends + octahedron in middle
- * @param device Graphics device
- * @param length Length of the bone
- * @param radius Radius of the spheres and octahedron
- * @param segments Number of segments for spheres (more = smoother)
- * @returns Mesh instance
- */
-function createBlenderBoneMesh(device: GraphicsDevice, length: number, radius: number, segments: number = 16): Mesh {
-    const mesh = new Mesh(device);
-    
-    // Create vertex and index arrays
-    const vertices: number[] = [];
-    const normals: number[] = [];
-    const indices: number[] = [];
-    let vertexOffset = 0;
-    
-    // Helper to add a vertex
-    const addVertex = (x: number, y: number, z: number, nx: number, ny: number, nz: number) => {
-        vertices.push(x, y, z);
-        normals.push(nx, ny, nz);
-    };
-    
-    // Create a single sphere at the origin
-    const sphereSegments = segments;
-    const sphereRings = Math.max(4, Math.floor(segments / 2));
-    
-    // Create sphere vertices
-    for (let ring = 0; ring <= sphereRings; ring++) {
-        const theta = (ring / sphereRings) * Math.PI; // 0 to PI
-        const y = radius * Math.cos(theta);
-        const ringRadius = radius * Math.sin(theta);
-        
-        for (let i = 0; i <= sphereSegments; i++) {
-            const phi = (i / sphereSegments) * Math.PI * 2;
-            const x = ringRadius * Math.cos(phi);
-            const z = ringRadius * Math.sin(phi);
-            
-            // Normal points outward from sphere center
-            const normalY = Math.cos(theta);
-            const normalRadius = Math.sin(theta);
-            const nx = normalRadius * Math.cos(phi);
-            const ny = normalY;
-            const nz = normalRadius * Math.sin(phi);
-            
-            addVertex(x, y, z, nx, ny, nz);
-        }
-    }
-    
-    // Create sphere indices
-    for (let ring = 0; ring < sphereRings; ring++) {
-        for (let i = 0; i < sphereSegments; i++) {
-            const current = ring * (sphereSegments + 1) + i;
-            const next = ring * (sphereSegments + 1) + (i + 1);
-            const below = (ring + 1) * (sphereSegments + 1) + i;
-            const belowNext = (ring + 1) * (sphereSegments + 1) + (i + 1);
-            
-            indices.push(current, below, next);
-            indices.push(next, below, belowNext);
-        }
-    }
-    
-    vertexOffset = (sphereRings + 1) * (sphereSegments + 1);
-    
-    // Create octahedron extending from sphere along Y axis (forward direction)
-    // Octahedron center is at 10% of the length from the sphere
-    const BONE_LENGTH = 5; // Arbitrary length
-    const octaCenterY = BONE_LENGTH * 0.1; // 10% of length from sphere
-    const octaRadius = radius * 2.0; // Octahedron radius (2x sphere radius)
-    
-    // Octahedron extends from near sphere to full length
-    // The octahedron center is at 10% of length, so it extends from ~0 to ~length
-    const octaTop = BONE_LENGTH; // Top of octahedron (farthest point)
-    const octaBottom = 0; // Bottom of octahedron (at sphere)
-    
-    // Octahedron has 6 vertices: top, bottom, and 4 around the middle
-    const octahedronStartIndex = vertexOffset;
-    
-    // Top vertex of octahedron (at full length)
-    addVertex(0, octaTop, 0, 0, 1, 0);
-    vertexOffset++;
-    
-    // Bottom vertex of octahedron (at sphere)
-    addVertex(0, octaBottom, 0, 0, -1, 0);
-    vertexOffset++;
-    
-    // 4 vertices around the middle (at 10% of length - the octahedron center)
-    const middleY = octaCenterY;
-    const middleVertices: number[] = [];
-    for (let i = 0; i < 4; i++) {
-        const angle = (i / 4) * Math.PI * 2;
-        const x = octaRadius * Math.cos(angle);
-        const z = octaRadius * Math.sin(angle);
-        // Normal points outward from the octahedron face
-        const toTop = octaTop - middleY;
-        const normalLen = Math.sqrt(octaRadius * octaRadius + toTop * toTop);
-        const nx = (x / octaRadius) * (octaRadius / normalLen);
-        const ny = (toTop / normalLen);
-        const nz = (z / octaRadius) * (octaRadius / normalLen);
-        addVertex(x, middleY, z, nx, ny, nz);
-        middleVertices.push(vertexOffset);
-        vertexOffset++;
-    }
-    
-    // Create octahedron faces (8 triangular faces)
-    const topIdx = octahedronStartIndex;
-    const bottomIdx = octahedronStartIndex + 1;
-    
-    // Top 4 faces (pointing upward)
-    for (let i = 0; i < 4; i++) {
-        const next = (i + 1) % 4;
-        const v1 = middleVertices[i];
-        const v2 = middleVertices[next];
-        indices.push(topIdx, v1, v2);
-    }
-    
-    // Bottom 4 faces (pointing downward)
-    for (let i = 0; i < 4; i++) {
-        const next = (i + 1) % 4;
-        const v1 = middleVertices[i];
-        const v2 = middleVertices[next];
-        indices.push(bottomIdx, v2, v1);
-    }
-    
-    // Convert to interleaved format
-    const totalVertices = vertices.length / 3;
-    const vertexData = new Float32Array(totalVertices * 6);
-    for (let i = 0; i < totalVertices; i++) {
-        const offset = i * 6;
-        vertexData[offset + 0] = vertices[i * 3 + 0];
-        vertexData[offset + 1] = vertices[i * 3 + 1];
-        vertexData[offset + 2] = vertices[i * 3 + 2];
-        vertexData[offset + 3] = normals[i * 3 + 0];
-        vertexData[offset + 4] = normals[i * 3 + 1];
-        vertexData[offset + 5] = normals[i * 3 + 2];
-    }
-    
-    // Create vertex format
-    const vertexFormat = new VertexFormat(device, [
-        { semantic: SEMANTIC_POSITION, components: 3, type: TYPE_FLOAT32 },
-        { semantic: SEMANTIC_NORMAL, components: 3, type: TYPE_FLOAT32 }
-    ]);
-    
-    // Create vertex buffer with interleaved data
-    const vertexBuffer = new VertexBuffer(
-        device,
-        vertexFormat,
-        totalVertices,
-        {
-            usage: 1, // BUFFER_STATIC
-            data: vertexData.buffer
-        }
-    );
-    
-    mesh.vertexBuffer = vertexBuffer;
-    mesh.primitive[0] = {
-        type: PRIMITIVE_TRIANGLES,
-        base: 0,
-        baseVertex: 0,
-        count: indices.length,
-        indexed: true
-    };
-    
-    // Create index buffer
-    // IndexBuffer(device, format, numIndices, usage, data)
-    const indexData = new Uint16Array(indices);
-    const indexBuffer = new IndexBuffer(device, 1, indices.length, 1, indexData.buffer);
-    mesh.indexBuffer[0] = indexBuffer;
-    
-    // Calculate bounding box manually
-    let minX = Infinity, minY = Infinity, minZ = Infinity;
-    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    for (let i = 0; i < totalVertices; i++) {
-        const offset = i * 6;
-        const x = vertexData[offset + 0];
-        const y = vertexData[offset + 1];
-        const z = vertexData[offset + 2];
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        minZ = Math.min(minZ, z);
-        maxX = Math.max(maxX, x);
-        maxY = Math.max(maxY, y);
-        maxZ = Math.max(maxZ, z);
-    }
-    const aabb = new BoundingBox();
-    aabb.center.set((minX + maxX) * 0.5, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5);
-    aabb.halfExtents.set((maxX - minX) * 0.5, (maxY - minY) * 0.5, (maxZ - minZ) * 0.5);
-    mesh.aabb = aabb;
-    
-    return mesh;
-}
-
 class BoneShape extends Element {
+    _radius = 0.05;
+    _parentLocation = new Vec3();
     pivot: Entity;
-    meshInstance: MeshInstance;
     material: ShaderMaterial;
-    _length: number = -1; // Initialize to -1 to force mesh recreation on first setBoneTransform call
-    _radius: number = 0.01;
-    private mesh: Mesh | null = null;
-    
+
     constructor() {
         super(ElementType.debug);
-        
+
         this.pivot = new Entity('bonePivot');
+        this.pivot.addComponent('render', {
+            type: 'box'
+        });
+        const r = this._radius * 2;
+        this.pivot.setLocalScale(r, r, r);
     }
-    
+
     add() {
-        const device = this.scene.graphicsDevice;
-        
-        // Create Blender-style bone mesh at fixed base length (1.0)
-        // All bones use the same mesh, scaled uniformly to maintain proportions
-        if (!this.mesh) {
-            this.mesh = createBlenderBoneMesh(device, 1.0, this._radius, 16);
-        }
-        
-        // Create simple material
-        this.material = new ShaderMaterial({
+        const material = new ShaderMaterial({
             uniqueName: 'boneShape',
-            attributes: {
-                vertex_position: SEMANTIC_POSITION,
-                vertex_normal: SEMANTIC_NORMAL
-            },
             vertexGLSL: `
                 attribute vec3 vertex_position;
-                attribute vec3 vertex_normal;
-                
                 uniform mat4 matrix_model;
                 uniform mat4 matrix_viewProjection;
-                
-                varying vec3 vNormal;
-                
-                void main(void) {
+                void main() {
                     gl_Position = matrix_viewProjection * matrix_model * vec4(vertex_position, 1.0);
-                    vNormal = normalize((matrix_model * vec4(vertex_normal, 0.0)).xyz);
                 }
             `,
             fragmentGLSL: `
-                precision highp float;
-                
-                varying vec3 vNormal;
-                
-                void main(void) {
-                    // Bright blue color with simple lighting
-                    float light = max(0.6, dot(vNormal, normalize(vec3(0.5, 1.0, 0.5))));
-                    // Very bright blue: RGB(0.0, 0.5, 1.0) - vibrant cyan-blue
-                    gl_FragColor = vec4(0.0, 0.5 * light, 1.0 * light, 1.0);
+                bool intersectSphere(out float t0, out float t1, vec3 pos, vec3 dir, vec4 sphere) {
+                    vec3 L = sphere.xyz - pos;
+                    float tca = dot(L, dir);
+                    float d2 = sphere.w * sphere.w - (dot(L, L) - tca * tca);
+                    if (d2 <= 0.0) return false;
+                    float thc = sqrt(d2);
+                    t0 = tca - thc;
+                    t1 = tca + thc;
+                    if (t1 <= 0.0) return false;
+                    return true;
+                }
+                uniform mat4 matrix_viewProjection;
+                uniform vec4 sphere;
+                uniform vec3 near_origin;
+                uniform vec3 near_x;
+                uniform vec3 near_y;
+                uniform vec3 far_origin;
+                uniform vec3 far_x;
+                uniform vec3 far_y;
+                uniform vec2 targetSize;
+                void main() {
+                    vec2 clip = gl_FragCoord.xy / targetSize;
+                    vec3 worldNear = near_origin + near_x * clip.x + near_y * clip.y;
+                    vec3 worldFar = far_origin + far_x * clip.x + far_y * clip.y;
+                    vec3 rayDir = normalize(worldFar - worldNear);
+                    float t0, t1;
+                    if (!intersectSphere(t0, t1, worldNear, rayDir, sphere)) {
+                        discard;
+                    }
+                    
+                    // Use front intersection point (closest to camera)
+                    float t = t0 > 0.0 ? t0 : t1;
+                    vec3 hitPos = worldNear + rayDir * t;
+                    
+                    // Calculate normal (from sphere center to hit point)
+                    vec3 normal = normalize(hitPos - sphere.xyz);
+                    
+                    // Fake lighting like Blender object mode: fixed light direction
+                    // Light from top-right-front (standard Blender shading)
+                    vec3 lightDir = normalize(vec3(0.4, 0.8, 0.4));
+                    float NdotL = dot(normal, lightDir);
+                    
+                    // Map from [-1, 1] to [0.3, 1.0] for smooth shading
+                    // This gives a nice 3D appearance without actual lighting
+                    float shade = NdotL * 0.5 + 0.5; // [0, 1]
+                    shade = mix(0.3, 1.0, shade); // [0.3, 1.0]
+                    
+                    // Base blue color with fake shading
+                    vec3 baseColor = vec3(0.0, 0.5, 1.0);
+                    gl_FragColor = vec4(baseColor * shade, 1.0);
                 }
             `
         });
-        
-        // No blending - solid color, render on top
-        this.material.blendState = BlendState.NOBLEND;
-        this.material.depthState = DepthState.NODEPTH; // Render on top of everything
-        this.material.update();
-        
-        this.meshInstance = new MeshInstance(this.mesh, this.material, this.pivot);
-        this.meshInstance.cull = false;
-        
-        this.pivot.addComponent('render', {
-            meshInstances: [this.meshInstance]
-        });
-        
-        // Use gizmo layer to render on top
+        material.cull = CULLFACE_FRONT;
+        material.blendState = BlendState.NOBLEND;
+        material.depthState = DepthState.NODEPTH;
+        material.update();
+
+        this.pivot.render.meshInstances[0].material = material;
         this.pivot.render.layers = [this.scene.gizmoLayer.id];
-        
-        // Ensure pivot is enabled
-        this.pivot.enabled = true;
-        
+
+        this.material = material;
+
         this.scene.contentRoot.addChild(this.pivot);
-        
+
         this.updateBound();
     }
-    
-    onPreRender() {
-        if (!this.pivot.enabled || !this.scene) {
-            return;
-        }
-        
-        // Set depth state to render on top
-        const device = this.scene.graphicsDevice;
-        device.setDepthState(DepthState.NODEPTH);
-    }
-    
+
     remove() {
         if (this.pivot.parent) {
             this.pivot.parent.removeChild(this.pivot);
         }
         this.scene.boundDirty = true;
     }
-    
+
     destroy() {
-        if (this.material) {
-            this.material.destroy();
-        }
-        if (this.mesh) {
-            this.mesh.destroy();
-        }
+        // Nothing to destroy
     }
-    
+
     serialize(serializer: Serializer): void {
         serializer.packa(this.pivot.getWorldTransform().data);
-        serializer.pack(this._length);
-        serializer.pack(this._radius);
+        serializer.pack(this.radius);
     }
-    
+
+    onPreRender() {
+        if (!this.pivot.enabled) {
+            return;
+        }
+
+        // Set depth state to render on top
+        const device = this.scene.graphicsDevice;
+        device.setDepthState(DepthState.NODEPTH);
+
+        this.pivot.getWorldTransform().getTranslation(v);
+        this.material.setParameter('sphere', [v.x, v.y, v.z, this.radius]);
+
+        // Set targetSize via device scope (like sphere-shape does)
+        device.scope.resolve('targetSize').setValue([device.width, device.height]);
+        
+        // Camera uniforms (near_origin, near_x, near_y, far_origin, far_x, far_y) 
+        // are set automatically by camera.updateCameraUniforms() via device.scope
+        // matrix_viewProjection is set automatically by PlayCanvas
+    }
+
     moved() {
         this.updateBound();
     }
-    
+
     updateBound() {
-        this.pivot.getWorldTransform().getTranslation(v);
-        const maxExtent = Math.max(this._length * 0.5 + this._radius, this._radius);
-        bound.center.copy(v);
-        bound.halfExtents.set(maxExtent, maxExtent, maxExtent);
-        this.scene.boundDirty = true;
+        bound.center.copy(this.pivot.getPosition());
+        bound.halfExtents.set(this.radius, this.radius, this.radius);
+        if (this.scene) {
+            this.scene.boundDirty = true;
+        }
     }
-    
+
     get worldBound(): BoundingBox | null {
         return bound;
     }
-    
+
     /**
-     * Set bone transform - simplified to just show a sphere at the joint world position
+     * Set bone position (joint location)
      */
-    setTransform(position: Vec3, rotation: Quat, scale: Vec3) {
-        if (!this.pivot) {
-            return;
-        }
-        
-        // Enable the bone
-        this.pivot.enabled = true;
-        
-        // Place the pivot at the joint world position
-        this.pivot.setPosition(position);
-        
-        // Create rotation matrix to extract forward direction
-        const rotMat = new Mat4();
-        rotMat.setTRS(Vec3.ZERO, rotation, Vec3.ONE);
-        
-        // Extract the X axis from rotation matrix (might be the forward direction)
-        // In some skeletal systems, bones extend along X axis
-        const forwardX = new Vec3();
-        rotMat.getX(forwardX);
-        
-        // Calculate rotation to align bone's local Y axis to the X-forward direction
-        const boneLocalY = new Vec3(0, 1, 0);
-        const alignRotation = new Quat();
-        
-        // Use look-at style rotation: align Y axis to forward direction
-        const dot = boneLocalY.dot(forwardX);
-        if (Math.abs(dot + 1.0) < 0.000001) {
-            // Vectors are opposite, rotate 180 degrees
-            const perp = new Vec3(0, 0, 1);
-            alignRotation.setFromAxisAngle(perp, Math.PI);
-        } else if (Math.abs(dot - 1.0) < 0.000001) {
-            // Vectors are parallel, no rotation needed
-            alignRotation.set(0, 0, 0, 1); // Identity quaternion
-        } else {
-            // Calculate rotation using cross product and angle
-            const axis = new Vec3();
-            axis.cross(boneLocalY, forwardX).normalize();
-            const angle = Math.acos(dot);
-            alignRotation.setFromAxisAngle(axis, angle);
-        }
-        
-        // Apply the alignment rotation
-        this.pivot.setRotation(alignRotation);
-        
-        // Constant scale for the bone
-        const BONE_SCALE = 0.05;
-        this.pivot.setLocalScale(BONE_SCALE, BONE_SCALE, BONE_SCALE);
-        
+    setPosition(position: Vec3) {
+        this.pivot.setLocalPosition(position);
         this.updateBound();
     }
-    
-    set length(value: number) {
-        this._length = value;
+
+    set radius(radius: number) {
+        this._radius = radius;
+        const r = this._radius * 2;
+        this.pivot.setLocalScale(r, r, r);
         this.updateBound();
     }
-    
-    get length() {
-        return this._length;
-    }
-    
-    set radius(value: number) {
-        if (Math.abs(this._radius - value) < 0.0001) {
-            return; // No change
-        }
-        
-        this._radius = value;
-        
-        // Recreate mesh with new radius if it exists
-        if (this.mesh && this.scene) {
-            this.mesh.destroy();
-            const device = this.scene.graphicsDevice;
-            this.mesh = createBlenderBoneMesh(device, 1.0, this._radius, 16);
-            // Update mesh instance if it exists
-            if (this.meshInstance) {
-                this.meshInstance.mesh = this.mesh;
-            }
-        }
-        
-        this.updateBound();
-    }
-    
+
     get radius() {
         return this._radius;
     }
 }
 
 export { BoneShape };
-

@@ -53,17 +53,13 @@ export class Armature extends SceneObject {
         
         // Set up timeline event handlers if we have animation data
         if (this.animationData && this.numFrames > 0) {
-            // Helper function to update animation frame from timeline frame/time
-            const updateFromTimeline = (timelineValue: number) => {
-                // Convert timeline frames to time in seconds, then to animation frames
+            // Update animation from timeline frame number
+            const updateFromFrame = (frame: number) => {
                 const timelineFrameRate = this.scene.events.invoke('timeline.frameRate') as number || 30;
                 const animationFrameRate = 30; // Assume animation is also 30 FPS (standard)
                 
-                // Convert timeline frames to seconds
-                const timeInSeconds = timelineValue / timelineFrameRate;
-                
-                // Convert seconds to animation frame (1:1 mapping if same frame rate)
-                // Clamp to animation bounds instead of looping
+                // Convert timeline frame to time in seconds, then to animation frame
+                const timeInSeconds = frame / timelineFrameRate;
                 const frameIndex = Math.min(
                     Math.floor(timeInSeconds * animationFrameRate),
                     this.numFrames - 1
@@ -71,14 +67,16 @@ export class Armature extends SceneObject {
                 this.setFrame(frameIndex);
             };
             
-            // Listen to timeline.time (fires during playback)
-            this.timelineTimeHandle = this.scene.events.on('timeline.time', (time: number) => {
-                updateFromTimeline(time);
+            // Listen to timeline.frame (fires when scrubbing/dragging timeline)
+            this.timelineFrameHandle = this.scene.events.on('timeline.frame', (frame: number) => {
+                updateFromFrame(frame);
             });
             
-            // Also listen to timeline.frame (fires when scrubbing/dragging timeline)
-            this.timelineFrameHandle = this.scene.events.on('timeline.frame', (frame: number) => {
-                updateFromTimeline(frame);
+            // Listen to timeline.time (fires during playback - passes frame number, not seconds)
+            this.timelineTimeHandle = this.scene.events.on('timeline.time', (time: number) => {
+                // Note: timeline.time actually passes frame number, not seconds
+                // So we treat it as a frame
+                updateFromFrame(time);
             });
             
             // Set initial frame based on current timeline position (default to frame 0)
@@ -370,17 +368,12 @@ export class Armature extends SceneObject {
         }
         
         const numBones = worldTransforms.length;
-        const parents = this.armatureData.stdMaleParents!;
         
-        // Extract raw transform data (position, rotation, scale) from each bone's world transform
-        const boneTransforms = worldTransforms.map(mat => {
+        // Extract positions from world transforms
+        const bonePositions = worldTransforms.map(mat => {
             const pos = new Vec3();
-            const rot = new Quat();
-            const scale = new Vec3();
             mat.getTranslation(pos);
-            rot.setFromMat4(mat);
-            mat.getScale(scale);
-            return { position: pos, rotation: rot, scale };
+            return pos;
         });
         
         // Create or update bone meshes
@@ -394,33 +387,22 @@ export class Armature extends SceneObject {
                 // Add to scene FIRST so scene is set before updateBound() is called
                 this.scene.add(boneMesh);
                 // Set radius after adding to scene
-                boneMesh.radius = 0.05; // Increased radius for better visibility
+                boneMesh.radius = 0.025; // Increased radius for better visibility
                 this.boneMeshes.push(boneMesh);
             }
             
-            // Update bone mesh transform using raw transform data
+            // Update bone mesh position
             if (boneIdx < this.boneMeshes.length) {
                 const boneMesh = this.boneMeshes[boneIdx];
                 if (boneMesh && boneMesh.scene && boneMesh.pivot) {
-                    const transform = boneTransforms[boneIdx];
-                    
-                    boneMesh.setTransform(transform.position, transform.rotation, transform.scale);
-                    // Ensure pivot is enabled after setting transform
-                    if (boneMesh.pivot) {
-                        boneMesh.pivot.enabled = true;
-                    }
+                    boneMesh.setPosition(bonePositions[boneIdx]);
+                    boneMesh.pivot.enabled = true;
                 }
             }
         }
         
         if (meshesNeedCreation) {
-            console.log(`[Armature] Visualized ${this.boneMeshes.length} bones as meshes`);
-            // Debug: log first few bone transforms
-            if (this.boneMeshes.length > 0 && boneTransforms.length > 0) {
-                const firstTransform = boneTransforms[0];
-                console.log(`[Armature] First bone mesh position:`, firstTransform.position);
-                console.log(`[Armature] First bone mesh pivot enabled:`, this.boneMeshes[0]?.pivot?.enabled);
-            }
+            console.log(`[Armature] Visualized ${this.boneMeshes.length} bones as spheres`);
         }
     }
     

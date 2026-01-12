@@ -28,6 +28,7 @@ import { Underlay } from './underlay';
 class Scene {
     events: Events;
     config: SceneConfig;
+    private _isRendering = false;
     canvas: HTMLCanvasElement;
     app: PCApp;
     backgroundLayer: Layer;
@@ -338,6 +339,7 @@ class Scene {
     }
 
     private onPreRender() {
+        this._isRendering = true;
         if (this.canvasResize) {
             this.canvas.width = this.canvasResize.width;
             this.canvas.height = this.canvasResize.height;
@@ -385,6 +387,11 @@ class Scene {
         this.forEachElement(e => e.onPostRender());
 
         this.events.fire('postrender');
+        this._isRendering = false;
+    }
+
+    get isRendering(): boolean {
+        return this._isRendering;
     }
 }
 

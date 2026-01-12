@@ -29,7 +29,6 @@ import { ScaleTool } from './tools/scale-tool';
 import { SphereSelection } from './tools/sphere-selection';
 import { ToolManager } from './tools/tool-manager';
 import { SphereShape } from './shapes/sphere-shape';
-import { SplatLoader } from './gs/engine/SplatLoader';
 import { registerTransformHandlerEvents } from './transform/transform-handler';
 import { EditorUI } from './ui/editor';
 import { localizeInit } from './ui/localization';

@@ -466,8 +466,12 @@ class Splat extends SceneObject {
     get selectionBound() {
         const selectionBound = this.selectionBoundStorage;
         if (this.selectionBoundDirty) {
-            this.scene.dataProcessor.calcBound(this, selectionBound, true);
-            this.selectionBoundDirty = false;
+            // Don't calculate bounds during rendering to avoid nested render passes
+            if (!this.scene.isRendering) {
+                this.scene.dataProcessor.calcBound(this, selectionBound, true);
+                this.selectionBoundDirty = false;
+            }
+            // If rendering, return cached bound (may be stale, but prevents nested render pass)
         }
         return selectionBound;
     }
@@ -476,9 +480,13 @@ class Splat extends SceneObject {
     get localBound() {
         const localBound = this.localBoundStorage;
         if (this.localBoundDirty) {
-            this.scene.dataProcessor.calcBound(this, localBound, false);
-            this.localBoundDirty = false;
-            this.entity.getWorldTransform().transformPoint(localBound.center, vec);
+            // Don't calculate bounds during rendering to avoid nested render passes
+            if (!this.scene.isRendering) {
+                this.scene.dataProcessor.calcBound(this, localBound, false);
+                this.localBoundDirty = false;
+                this.entity.getWorldTransform().transformPoint(localBound.center, vec);
+            }
+            // If rendering, return cached bound (may be stale, but prevents nested render pass)
         }
         return localBound;
     }

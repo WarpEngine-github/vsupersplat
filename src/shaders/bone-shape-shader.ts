@@ -86,6 +86,7 @@ const cylinderVertexShader = /* glsl */ `
 const cylinderFragmentShader = /* glsl */ `
     // Ray-cylinder intersection
     // Cylinder defined by startPos, endPos, and radius
+    // Simplified approach matching sphere shader style
     bool intersectCylinder(out float t0, out float t1, vec3 rayPos, vec3 rayDir, vec3 startPos, vec3 endPos, float radius) {
         vec3 axis = endPos - startPos;
         float axisLen = length(axis);
@@ -98,13 +99,22 @@ const cylinderFragmentShader = /* glsl */ `
         vec3 axisDir = axis / axisLen;
         vec3 oc = rayPos - startPos;
         
-        // Project ray onto cylinder axis
-        float a = dot(rayDir, rayDir) - dot(rayDir, axisDir) * dot(rayDir, axisDir);
-        float b = 2.0 * (dot(oc, rayDir) - dot(oc, axisDir) * dot(rayDir, axisDir));
-        float c = dot(oc, oc) - dot(oc, axisDir) * dot(oc, axisDir) - radius * radius;
+        // Vector from ray to cylinder axis (perpendicular component)
+        vec3 rayToAxis = rayDir - axisDir * dot(rayDir, axisDir);
+        vec3 ocToAxis = oc - axisDir * dot(oc, axisDir);
+        
+        // Quadratic coefficients for infinite cylinder intersection
+        float a = dot(rayToAxis, rayToAxis);
+        float b = 2.0 * dot(ocToAxis, rayToAxis);
+        float c = dot(ocToAxis, ocToAxis) - radius * radius;
         
         float discriminant = b * b - 4.0 * a * c;
         if (discriminant < 0.0) {
+            return false;
+        }
+        
+        // Handle case where ray is parallel to cylinder axis
+        if (abs(a) < 0.0001) {
             return false;
         }
         
@@ -116,14 +126,14 @@ const cylinderFragmentShader = /* glsl */ `
             return false;
         }
         
-        // Clamp intersections to cylinder length
+        // Check if intersections are within cylinder bounds
         vec3 hit0 = rayPos + rayDir * t0;
         vec3 hit1 = rayPos + rayDir * t1;
         
         float proj0 = dot(hit0 - startPos, axisDir);
         float proj1 = dot(hit1 - startPos, axisDir);
         
-        // Check if intersections are within cylinder bounds
+        // Check if intersections are within cylinder length
         bool valid0 = proj0 >= 0.0 && proj0 <= axisLen;
         bool valid1 = proj1 >= 0.0 && proj1 <= axisLen;
         
@@ -131,7 +141,7 @@ const cylinderFragmentShader = /* glsl */ `
             return false;
         }
         
-        // Adjust t values if needed
+        // Use valid intersections, preferring the closer one
         if (!valid0) {
             t0 = t1;
         }

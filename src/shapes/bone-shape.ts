@@ -1,14 +1,9 @@
 import {
-    BLENDEQUATION_ADD,
-    BLENDMODE_ONE,
-    BLENDMODE_ONE_MINUS_SRC_ALPHA,
-    BLENDMODE_SRC_ALPHA,
     CULLFACE_FRONT,
     BlendState,
     BoundingBox,
     DepthState,
     Entity,
-    Mat4,
     ShaderMaterial,
     Vec3
 } from 'playcanvas';
@@ -25,8 +20,8 @@ interface SphereConfig {
     name: string;
     position: Vec3;
     radius: number;
-    color: Vec3;  // RGB color
-    depthOffset?: number;  // Depth offset for render priority (negative = closer/front)
+    color: Vec3;
+    depthOffset?: number;
 }
 
 interface CylinderConfig {
@@ -39,38 +34,31 @@ interface CylinderConfig {
 }
 
 class BoneShape extends Element {
-    _radius = 0.05;
-    _jointRadius = 0.05;  // Separate radius for joint sphere
-    _parentColor = new Vec3(0.0, 0.5, 1.0);  // Default blue
-    _jointColor = new Vec3(0.2, 0.7, 1.0);  // Lighter blue for joint
-    _cylinderColor = new Vec3(1.0, 1.0, 1.0);  // Default white
+    _radius = 0.025;
+    _jointRadius = 0.01;
+    _parentColor = new Vec3(0.0, 0.5, 1.0);
+    _jointColor = new Vec3(0.2, 0.7, 1.0);
+    _cylinderColor = new Vec3(1.0, 1.0, 1.0);
     pivot: Entity;
     jointPivot: Entity | null = null;
     cylinder: Entity | null = null;
     material: ShaderMaterial;
     jointMaterial: ShaderMaterial | null = null;
     cylinderMaterial: ShaderMaterial | null = null;
+
     constructor() {
         super(ElementType.debug);
-        // Entities will be created in createSphere()
     }
 
-    /**
-     * Create a sphere entity with material and add it to the scene
-     * @param config Configuration for the sphere
-     * @returns Object containing the entity and material
-     */
     private createSphere(config: SphereConfig): { entity: Entity; material: ShaderMaterial } {
-        // Create entity
         const entity = new Entity(config.name);
         entity.addComponent('render', {
             type: 'box'
         });
         const r = config.radius * 2;
         entity.setLocalScale(r, r, r);
-        entity.setLocalPosition(config.position);
+        entity.setPosition(config.position);
 
-        // Create material with color parameter
         const material = new ShaderMaterial({
             uniqueName: `boneShape_${config.name}`,
             vertexGLSL: sphereVertexShader,
@@ -78,78 +66,64 @@ class BoneShape extends Element {
         });
         material.cull = CULLFACE_FRONT;
         material.blendState = BlendState.NOBLEND;
-        // Use depth testing with offset instead of NODEPTH so joints can render above parents
         material.depthState = DepthState.DEFAULT;
         
-        // Set color and depth offset uniforms
         material.setParameter('sphereColor', [config.color.x, config.color.y, config.color.z]);
         material.setParameter('depthOffset', config.depthOffset !== undefined ? config.depthOffset : 0.0);
         material.update();
 
         entity.render.meshInstances[0].material = material;
         entity.render.layers = [this.scene.gizmoLayer.id];
-
         this.scene.contentRoot.addChild(entity);
 
         return { entity, material };
     }
 
-private createCylinder(config: CylinderConfig): { entity: Entity; material: ShaderMaterial } {
-    // Create entity (positioned at start position as requested)
-    const entity = new Entity(config.name);
-    entity.addComponent('render', {
-        type: 'box'
-    });
-    
-    // Position at start position (parent location) - world space position equals start position
-    entity.setLocalPosition(config.startPosition);
-    
-    // Use a scale large enough to cover the cylinder from any angle
-    const axis = new Vec3();
-    axis.sub2(config.endPosition, config.startPosition);
-    const length = axis.length();
-    const maxDim = Math.max(length + config.radius * 2, config.radius * 4) * 2;
-    entity.setLocalScale(maxDim, maxDim, maxDim);
+    private createCylinder(config: CylinderConfig): { entity: Entity; material: ShaderMaterial } {
+        const entity = new Entity(config.name);
+        entity.addComponent('render', {
+            type: 'box'
+        });
+        
+        const midpoint = new Vec3();
+        midpoint.add2(config.startPosition, config.endPosition);
+        midpoint.mulScalar(0.5);
+        entity.setPosition(midpoint);
 
-    // Create material
-    const material = new ShaderMaterial({
-        uniqueName: `cylinderShape_${config.name}`,
-        vertexGLSL: cylinderVertexShader,
-        fragmentGLSL: cylinderFragmentShader
-    });
-    material.cull = CULLFACE_FRONT;
-    material.blendState = BlendState.NOBLEND;
-    material.depthState = DepthState.DEFAULT;
-    
-    // Set uniforms
-    material.setParameter('startPosition', [config.startPosition.x, config.startPosition.y, config.startPosition.z]);
-    material.setParameter('endPosition', [config.endPosition.x, config.endPosition.y, config.endPosition.z]);
-    material.setParameter('radius', config.radius);
-    material.setParameter('cylinderColor', [config.color.x, config.color.y, config.color.z]);
-    material.setParameter('depthOffset', config.depthOffset !== undefined ? config.depthOffset : 0.0);
-    material.update();
+        const material = new ShaderMaterial({
+            uniqueName: `cylinderShape_${config.name}`,
+            vertexGLSL: cylinderVertexShader,
+            fragmentGLSL: cylinderFragmentShader
+        });
+        material.cull = CULLFACE_FRONT;
+        material.blendState = BlendState.NOBLEND;
+        material.depthState = DepthState.DEFAULT;
+        
+        material.setParameter('startPosition', [config.startPosition.x, config.startPosition.y, config.startPosition.z]);
+        material.setParameter('endPosition', [config.endPosition.x, config.endPosition.y, config.endPosition.z]);
+        material.setParameter('radius', config.radius);
+        material.setParameter('cylinderColor', [config.color.x, config.color.y, config.color.z]);
+        material.setParameter('depthOffset', config.depthOffset !== undefined ? config.depthOffset : 0.0);
+        material.update();
 
-    entity.render.meshInstances[0].material = material;
-    entity.render.layers = [this.scene.gizmoLayer.id];
+        entity.render.meshInstances[0].material = material;
+        entity.render.layers = [this.scene.gizmoLayer.id];
+        this.scene.contentRoot.addChild(entity);
 
-    this.scene.contentRoot.addChild(entity);
-
-    return { entity, material };
-}
+        return { entity, material };
+    }
 
     add() {
-        // Create parent sphere (bone origin) - render first (depth offset 0)
         const parentConfig: SphereConfig = {
             name: 'bonePivot',
-            position: new Vec3(0, 0, 0),  // Will be set via setPivotPosition
+            position: new Vec3(0, 0, 0),
             radius: this._radius,
             color: this._parentColor,
-            depthOffset: -0.005  // Negative offset to render in front of cylinder
+            depthOffset: -0.005
         };
         const parentSphere = this.createSphere(parentConfig);
         this.pivot = parentSphere.entity;
         this.material = parentSphere.material;
-
         this.updateBound();
     }
 
@@ -167,7 +141,6 @@ private createCylinder(config: CylinderConfig): { entity: Entity; material: Shad
     }
 
     destroy() {
-        // Nothing to destroy
     }
 
     serialize(serializer: Serializer): void {
@@ -180,34 +153,26 @@ private createCylinder(config: CylinderConfig): { entity: Entity; material: Shad
             return;
         }
 
-        // Set targetSize via device scope (like sphere-shape does)
         const device = this.scene.graphicsDevice;
         device.scope.resolve('targetSize').setValue([device.width, device.height]);
 
-        // Render parent sphere
         this.pivot.getWorldTransform().getTranslation(v);
         this.material.setParameter('sphere', [v.x, v.y, v.z, this._radius]);
-        // Ensure color is set
         this.material.setParameter('sphereColor', [this._parentColor.x, this._parentColor.y, this._parentColor.z]);
         
-        // Render joint sphere if it exists
         if (this.jointPivot) {
             this.jointPivot.getWorldTransform().getTranslation(v);
             this.jointMaterial!.setParameter('sphere', [v.x, v.y, v.z, this._jointRadius]);
-            // Ensure color is set
             this.jointMaterial!.setParameter('sphereColor', [this._jointColor.x, this._jointColor.y, this._jointColor.z]);
         }
         
-        // Update cylinder uniforms if it exists
         if (this.cylinder && this.cylinderMaterial) {
             const parentPos = this.pivot.getPosition();
             const jointPos = this.jointPivot ? this.jointPivot.getPosition() : null;
             
             if (jointPos) {
-                // Update cylinder start/end positions (world space)
                 this.cylinderMaterial.setParameter('startPosition', [parentPos.x, parentPos.y, parentPos.z]);
                 this.cylinderMaterial.setParameter('endPosition', [jointPos.x, jointPos.y, jointPos.z]);
-                // Ensure color is set
                 this.cylinderMaterial.setParameter('cylinderColor', [this._cylinderColor.x, this._cylinderColor.y, this._cylinderColor.z]);
             }
         }
@@ -218,55 +183,9 @@ private createCylinder(config: CylinderConfig): { entity: Entity; material: Shad
     }
 
     updateBound() {
-        // Update bound to include both spheres AND cylinder using WORLD positions
-        if (this.jointPivot) {
-            // Get world positions to account for all parent transforms
-            this.pivot.getWorldTransform().getTranslation(v);
-            const parentWorldPos = v.clone();
-            this.jointPivot.getWorldTransform().getTranslation(v);
-            const jointWorldPos = v.clone();
-            
-            // Calculate bounds that encompass:
-            // 1. Parent sphere (center: parentWorldPos, radius: _radius)
-            // 2. Joint sphere (center: jointWorldPos, radius: _jointRadius)
-            // 3. Cylinder (from parentWorldPos to jointWorldPos, radius: _radius * 0.8)
-            //    The cylinder extends radius units in ALL perpendicular directions
-            
-            const maxSphereRadius = Math.max(this._radius, this._jointRadius);
-            const cylinderRadius = this._radius * 0.8;
-            // Use maximum radius to expand bounds in all directions
-            const maxRadius = Math.max(maxSphereRadius, cylinderRadius);
-            
-            // Find axis-aligned bounding box of line segment, then expand by maxRadius
-            const minX = Math.min(parentWorldPos.x, jointWorldPos.x) - maxRadius;
-            const maxX = Math.max(parentWorldPos.x, jointWorldPos.x) + maxRadius;
-            const minY = Math.min(parentWorldPos.y, jointWorldPos.y) - maxRadius;
-            const maxY = Math.max(parentWorldPos.y, jointWorldPos.y) + maxRadius;
-            const minZ = Math.min(parentWorldPos.z, jointWorldPos.z) - maxRadius;
-            const maxZ = Math.max(parentWorldPos.z, jointWorldPos.z) + maxRadius;
-            
-            // Set center and half extents
-            bound.center.set(
-                (minX + maxX) / 2,
-                (minY + maxY) / 2,
-                (minZ + maxZ) / 2
-            );
-            
-            bound.halfExtents.set(
-                (maxX - minX) / 2,
-                (maxY - minY) / 2,
-                (maxZ - minZ) / 2
-            );
-        } else {
-            // Only parent sphere - use world position
-            this.pivot.getWorldTransform().getTranslation(v);
-            bound.center.copy(v);
-            bound.halfExtents.set(this._radius, this._radius, this._radius);
-        }
-        
-        if (this.scene) {
-            this.scene.boundDirty = true;
-        }
+        bound.center.copy(this.pivot.getPosition());
+        bound.halfExtents.set(this.radius, this.radius, this.radius);
+        this.scene.boundDirty = true;
     }
 
     get worldBound(): BoundingBox | null {
@@ -274,22 +193,15 @@ private createCylinder(config: CylinderConfig): { entity: Entity; material: Shad
     }
 
     setPivotPosition(position: Vec3) {
-        this.pivot.setLocalPosition(position);
+        this.pivot.setPosition(position);
         
-        // Update cylinder if it exists (start position changed)
         if (this.cylinder && this.cylinderMaterial && this.jointPivot) {
             const jointPos = this.jointPivot.getPosition();
-            // Position cylinder at start position (parent location) - world space equals start position
-            this.cylinder.setLocalPosition(position);
+            const midpoint = new Vec3();
+            midpoint.add2(position, jointPos);
+            midpoint.mulScalar(0.5);
+            this.cylinder.setPosition(midpoint);
             
-            // Update scale to ensure it covers the cylinder
-            const axis = new Vec3();
-            axis.sub2(jointPos, position);
-            const length = axis.length();
-            const maxDim = Math.max(length + this._radius * 2, this._radius * 4) * 2;
-            this.cylinder.setLocalScale(maxDim, maxDim, maxDim);
-            
-            // Update cylinder uniforms
             this.cylinderMaterial.setParameter('startPosition', [position.x, position.y, position.z]);
             this.cylinderMaterial.setParameter('endPosition', [jointPos.x, jointPos.y, jointPos.z]);
         }
@@ -299,56 +211,45 @@ private createCylinder(config: CylinderConfig): { entity: Entity; material: Shad
 
     setJointPosition(position: Vec3 | null) {
         if (position !== null) {
-            // Create joint sphere if it doesn't exist
             if (this.jointPivot === null && this.scene) {
                 const jointConfig: SphereConfig = {
                     name: 'jointPivot',
                     position: position,
                     radius: this._jointRadius,
                     color: this._jointColor,
-                    depthOffset: -0.01  // Most negative offset - joints render on top of everything
+                    depthOffset: -0.01
                 };
                 const jointSphere = this.createSphere(jointConfig);
                 this.jointPivot = jointSphere.entity;
                 this.jointMaterial = jointSphere.material;
                 
-                // Create cylinder connecting parent to joint
                 const parentPos = this.pivot.getPosition();
                 const cylinderConfig: CylinderConfig = {
                     name: 'boneCylinder',
                     startPosition: parentPos,
                     endPosition: position,
-                    radius: this._radius * 0.8,  // Slightly smaller than parent sphere
+                    radius: this._radius * 0.8,
                     color: this._cylinderColor,
-                    depthOffset: 0.002  // Positive offset - render behind all spheres
+                    depthOffset: 0.002
                 };
                 const cylinderResult = this.createCylinder(cylinderConfig);
                 this.cylinder = cylinderResult.entity;
                 this.cylinderMaterial = cylinderResult.material;
             } else if (this.jointPivot) {
-                // Update joint position
-                this.jointPivot.setLocalPosition(position);
+                this.jointPivot.setPosition(position);
                 
-                // Update cylinder if it exists
                 if (this.cylinder && this.cylinderMaterial) {
                     const parentPos = this.pivot.getPosition();
-                    // Position cylinder at start position (parent location) - world space equals start position
-                    this.cylinder.setLocalPosition(parentPos);
+                    const midpoint = new Vec3();
+                    midpoint.add2(parentPos, position);
+                    midpoint.mulScalar(0.5);
+                    this.cylinder.setPosition(midpoint);
                     
-                    // Update scale to ensure it covers the cylinder
-                    const axis = new Vec3();
-                    axis.sub2(position, parentPos);
-                    const length = axis.length();
-                    const maxDim = Math.max(length + this._radius * 2, this._radius * 4) * 2;
-                    this.cylinder.setLocalScale(maxDim, maxDim, maxDim);
-                    
-                    // Update cylinder uniforms
                     this.cylinderMaterial.setParameter('startPosition', [parentPos.x, parentPos.y, parentPos.z]);
                     this.cylinderMaterial.setParameter('endPosition', [position.x, position.y, position.z]);
                 }
             }
         } else {
-            // Remove joint sphere and cylinder if setting to null
             if (this.jointPivot && this.jointPivot.parent) {
                 this.jointPivot.parent.removeChild(this.jointPivot);
                 this.jointPivot = null;

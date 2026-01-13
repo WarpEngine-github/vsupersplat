@@ -323,19 +323,23 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
 
         urls.forEach(url => URL.revokeObjectURL(url));
 
-        scene.add(model);
-
-        // Create Armature if joints.bin and rest rotation data are available
+        // Create and add Armature FIRST if joints.bin and rest rotation data are available
         const armatureData = (model.asset as any).__armatureData;
         const animationData = (model.asset as any).__animationData;
         if (armatureData && armatureData.joints && armatureData.stdMaleRestRotations) {
             const { Armature } = await import('../armature/armature');
             const armatureName = (model.name || 'Splat') + '_Armature';
             const armature = new Armature(armatureName, armatureData, animationData);
-            // Link the splat BEFORE adding armature to scene
-            // This ensures splats are linked when add() calls setFrame()
-            armature.linkSplat(model);
+            
+            // Add armature to scene FIRST
             scene.add(armature);
+            
+            // Then add splat and link it (armature is guaranteed to be in scene)
+            scene.add(model);
+            armature.linkSplat(model);
+        } else {
+            // No armature, just add splat normally
+            scene.add(model);
         }
 
         return model;

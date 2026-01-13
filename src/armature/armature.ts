@@ -64,6 +64,10 @@ export class Armature extends SceneObject {
         console.log('[Armature.add] Initializing armature:', this.name, 'numBones:', this.numBones, 'numFrames:', this.numFrames);
         
         this.scene.contentRoot.addChild(this._entity);
+        
+        // Set up automatic child tracking (calls Element.setupChildTracking which SceneObject overrides)
+        super.add();
+        
         this.initializeInverseBindPose();
         
         if (this.animationData && this.numFrames > 0) {
@@ -86,15 +90,7 @@ export class Armature extends SceneObject {
                 updateFromFrame(time);
             });
             
-            const currentTimelineFrame = this.scene.events.invoke('timeline.frame') as number || 0;
-            const timelineFrameRate = this.scene.events.invoke('timeline.frameRate') as number || 30;
-            const animationFrameRate = 30;
-            const timeInSeconds = currentTimelineFrame / timelineFrameRate;
-            const initialFrame = Math.min(
-                Math.floor(timeInSeconds * animationFrameRate),
-                this.numFrames - 1
-            );
-            this.setFrame(initialFrame);
+            this.setFrame(this.getCurrentFrameIndex());
         } else {
             const worldTransforms = this.calculateBoneTransforms();
             if (worldTransforms) {
@@ -109,9 +105,9 @@ export class Armature extends SceneObject {
     remove() {
         this.clearBoneVisualization();
         this.cleanupEventHandlers();
-        if (this._entity.parent) {
-            this._entity.parent.removeChild(this._entity);
-        }
+        
+        // Call SceneObject.remove() which handles entity removal and child tracking
+        super.remove();
     }
     
     calculateBindPoseTransforms(): Mat4[] | null {
@@ -284,6 +280,17 @@ export class Armature extends SceneObject {
         return worldTransforms;
     }
     
+    private getCurrentFrameIndex(): number {
+        const currentTimelineFrame = this.scene.events.invoke('timeline.frame') as number || 0;
+        const timelineFrameRate = this.scene.events.invoke('timeline.frameRate') as number || 30;
+        const animationFrameRate = 30;
+        const timeInSeconds = currentTimelineFrame / timelineFrameRate;
+        return Math.min(
+            Math.floor(timeInSeconds * animationFrameRate),
+            this.numFrames - 1
+        );
+    }
+
     setFrame(frameIndex: number) {
         if (frameIndex < 0 || (this.numFrames > 0 && frameIndex >= this.numFrames)) return;
         
@@ -531,12 +538,44 @@ export class Armature extends SceneObject {
     }
     
     linkSplat(splat: Splat) {
+        console.log('[Armature.linkSplat] Linking splat:', splat.name);
+        console.log('[Armature.linkSplat] Splat entity parent before:', splat.entity.parent?.name);
+        console.log('[Armature.linkSplat] Armature entity:', this._entity.name, 'has parent:', this._entity.parent?.name);
+        
         this.linkedSplats.add(splat);
+
+        // Armature is guaranteed to be in scene before linkSplat is called
+        // Remove splat from its current parent and parent to armature entity
+        if (splat.entity.parent) {
+            splat.entity.parent.removeChild(splat.entity);
+        }
+        this._entity.addChild(splat.entity);
+        
+        console.log('[Armature.linkSplat] Splat entity parent after:', splat.entity.parent?.name);
+        
+        // Update the splat with current bone transforms by reusing setFrame
+        if (this.animationData && this.numFrames > 0) {
+            this.setFrame(this.getCurrentFrameIndex());
+        } else {
+            // For non-animated armatures, reuse the same pattern from add()
+            const worldTransforms = this.calculateBoneTransforms();
+            if (worldTransforms) {
+                this.updateSplats(worldTransforms);
+            }
+        }
     }
     
     unlinkSplat(splat: Splat) {
         this.linkedSplats.delete(splat);
         this.splatBonePaletteMaps.delete(splat);
+        
+        // Restore splat entity to contentRoot
+        if (splat.entity.parent === this._entity) {
+            this._entity.removeChild(splat.entity);
+            if (this.scene) {
+                this.scene.contentRoot.addChild(splat.entity);
+            }
+        }
     }
 
     getDisplayName(): string {
@@ -555,12 +594,8 @@ export class Armature extends SceneObject {
         }
         this._worldBoundDirty = true;
         
-        // When armature moves, child bone meshes' world positions change
-        // but their local positions don't, so moved() won't be called automatically
-        // Manually call moved() on all bone meshes to update their bounds
-        for (const boneMesh of this.boneMeshes) {
-            boneMesh.moved();
-        }
+        // Call moved() on all child elements (inherited from SceneObject)
+        this.callMovedOnChildren();
         
         this.onMoved();
     }

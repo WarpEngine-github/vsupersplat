@@ -17,9 +17,30 @@ class SceneObject extends Element {
         return this._entity;
     }
 
+    /**
+     * Return the entity as the child container for automatic tracking
+     */
+    protected getChildContainer(): any {
+        return this._entity;
+    }
+
+    /**
+     * Remove this scene object from the scene
+     * Removes the entity from its parent before calling base remove()
+     */
+    remove() {
+        // Remove entity from its parent if it exists
+        if (this._entity && this._entity.parent) {
+            this._entity.parent.removeChild(this._entity);
+        }
+        // Call base remove() to tear down child tracking
+        super.remove();
+    }
+
     move(position?: Vec3, rotation?: Quat, scale?: Vec3) {
         throw new Error('SceneObject.move must be implemented by subclass');
     }
+
 
     getPivot(mode: 'center' | 'boundCenter', selection: boolean, result: Transform) {
         throw new Error('SceneObject.getPivot must be implemented by subclass');

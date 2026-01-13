@@ -341,6 +341,9 @@ class Splat extends SceneObject {
         // add the entity to the scene
         this.scene.contentRoot.addChild(this.entity);
 
+        // Set up automatic child tracking (calls Element.setupChildTracking which SceneObject overrides)
+        super.add();
+
         this.scene.events.on('view.bands', this.rebuildMaterial, this);
         this.rebuildMaterial(this.scene.events.invoke('view.bands'));
 
@@ -354,7 +357,9 @@ class Splat extends SceneObject {
     remove() {
         this.scene.events.off('view.bands', this.rebuildMaterial, this);
 
-        this.scene.contentRoot.removeChild(this.entity);
+        // Call SceneObject.remove() which handles entity removal and child tracking
+        super.remove();
+
         this.scene.boundDirty = true;
     }
 
@@ -443,7 +448,16 @@ class Splat extends SceneObject {
 
         this.makeWorldBoundDirty();
 
+        // Call moved() on all child elements (inherited from SceneObject)
+        this.callMovedOnChildren();
+
         this.onMoved();
+    }
+
+    moved() {
+        // Called when this splat is moved (e.g., as a child of armature)
+        // Mark world bounds as dirty so they get recalculated
+        this.makeWorldBoundDirty();
     }
 
     makeSelectionBoundDirty() {

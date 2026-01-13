@@ -26,6 +26,7 @@
         .splat-item-text {
             flex-grow: 1;
             flex-shrink: 1;
+            cursor: default;
 
             .visible & {
                 &:hover:not(.selected) {
@@ -35,6 +36,11 @@
 
             .selected & {
                 color: $text-primary;
+                cursor: default;
+                
+                &:hover {
+                    cursor: default;
+                }
             }
         }
 

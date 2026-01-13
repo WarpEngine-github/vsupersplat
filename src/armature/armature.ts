@@ -212,7 +212,8 @@ export class Armature extends SceneObject {
         
         const parents = this.armatureData.stdMaleParents!;
         const numBones = this.numBones;
-        const worldTransforms = new Array<Mat4>(numBones);
+        // These are armature-local transforms (relative to armature entity origin)
+        const armatureLocalTransforms = new Array<Mat4>(numBones);
         
         const rootBones: number[] = [];
         for (let i = 0; i < numBones; i++) {
@@ -256,11 +257,11 @@ export class Armature extends SceneObject {
         };
         
         for (let i = 0; i < numBones; i++) {
-            worldTransforms[i] = new Mat4();
+            armatureLocalTransforms[i] = new Mat4();
         }
         
         for (const rootIdx of rootBones) {
-            worldTransforms[rootIdx] = getLocalTransform(rootIdx);
+            armatureLocalTransforms[rootIdx] = getLocalTransform(rootIdx);
         }
         
         for (let boneIdx = 0; boneIdx < numBones; boneIdx++) {
@@ -271,10 +272,19 @@ export class Armature extends SceneObject {
             const parentIdx = parents[boneIdx];
             if (parentIdx >= 0 && parentIdx < numBones) {
                 const localMat = getLocalTransform(boneIdx);
-                worldTransforms[boneIdx].mul2(worldTransforms[parentIdx], localMat);
+                armatureLocalTransforms[boneIdx].mul2(armatureLocalTransforms[parentIdx], localMat);
             } else {
-                worldTransforms[boneIdx] = getLocalTransform(boneIdx);
+                armatureLocalTransforms[boneIdx] = getLocalTransform(boneIdx);
             }
+        }
+        
+        // Convert armature-local transforms to world-space transforms
+        // This accounts for the armature's position/rotation/scale
+        const armatureWorldTransform = this._entity.getWorldTransform();
+        const worldTransforms = new Array<Mat4>(numBones);
+        for (let i = 0; i < numBones; i++) {
+            worldTransforms[i] = new Mat4();
+            worldTransforms[i].mul2(armatureWorldTransform, armatureLocalTransforms[i]);
         }
         
         return worldTransforms;
@@ -417,10 +427,21 @@ export class Armature extends SceneObject {
             return;
         }
         
+        // Convert world-space transforms to armature-local space
+        // Since splats are children of the armature entity, they inherit the armature's transform
+        // So bone transforms need to be in local space relative to the armature
+        const armatureWorldToLocal = new Mat4();
+        armatureWorldToLocal.invert(this._entity.getWorldTransform());
+        
         const finalTransforms = new Array<Mat4>(worldTransforms.length);
         for (let boneIdx = 0; boneIdx < worldTransforms.length; boneIdx++) {
+            // Convert world-space bone transform to armature-local space
+            const localBoneTransform = new Mat4();
+            localBoneTransform.mul2(armatureWorldToLocal, worldTransforms[boneIdx]);
+            
+            // Apply inverse bind pose
             const final = new Mat4();
-            final.mul2(worldTransforms[boneIdx], this.inverseBindPose[boneIdx]);
+            final.mul2(localBoneTransform, this.inverseBindPose[boneIdx]);
             finalTransforms[boneIdx] = final;
         }
         

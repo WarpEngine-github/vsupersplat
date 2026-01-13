@@ -7,13 +7,14 @@ import { BoundingBox } from 'playcanvas';
 
 class SceneObject extends Element {
     _visible: boolean = true;
+    protected _entity: Entity;
 
     constructor(type: ElementType) {
         super(type);
     }
 
     get entity(): Entity {
-        throw new Error('SceneObject.entity must be implemented by subclass');
+        return this._entity;
     }
 
     move(position?: Vec3, rotation?: Quat, scale?: Vec3) {

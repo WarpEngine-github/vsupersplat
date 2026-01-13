@@ -53,7 +53,6 @@ class Splat extends SceneObject {
     numDeleted = 0;
     numLocked = 0;
     numSelected = 0;
-    entity: Entity;
     changedCounter = 0;
     stateTexture: Texture;
     transformTexture: Texture;
@@ -94,9 +93,9 @@ class Splat extends SceneObject {
         this.splatData = splatData as GSplatData;
         this.numSplats = splatData.numSplats;
 
-        this.entity = new Entity('splatEntitiy');
-        this.entity.setEulerAngles(orientation);
-        this.entity.addComponent('gsplat', { asset });
+        this._entity = new Entity('splatEntitiy');
+        this._entity.setEulerAngles(orientation);
+        this._entity.addComponent('gsplat', { asset });
 
         const instance = this.entity.gsplat.instance;
 

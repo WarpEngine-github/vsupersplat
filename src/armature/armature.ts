@@ -21,7 +21,6 @@ export class Armature extends SceneObject {
     private inverseBindPose: Mat4[] | null = null;
     private timelineTimeHandle: any = null;
     private timelineFrameHandle: any = null;
-    private _entity: Entity;
     private _worldBound: BoundingBox = new BoundingBox();
     private _worldBoundDirty: boolean = true;
     
@@ -33,10 +32,6 @@ export class Armature extends SceneObject {
         this.numBones = armatureData.numBones;
         this.numFrames = animationData ? animationData.numFrames : 0;
         this._entity = new Entity('armaturePivot');
-    }
-
-    get entity(): Entity {
-        return this._entity;
     }
     
     add() {
@@ -329,6 +324,12 @@ export class Armature extends SceneObject {
                 }
                 
                 this._entity.addChild(boneMesh.pivot);
+                if(boneMesh.jointPivot) {
+                    this._entity.addChild(boneMesh.jointPivot);
+                }
+                if(boneMesh.cylinder) {
+                    this._entity.addChild(boneMesh.cylinder);
+                }
                 boneMesh.pivot.enabled = true;
                 this.boneMeshes.push(boneMesh);
             } else {

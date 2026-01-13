@@ -1,16 +1,31 @@
 import { Element, ElementType } from './element';
 import { Events } from '../events';
 import { SceneObjectRenameOp } from '../editor/edit-ops';
+import { Entity, Quat, Vec3 } from 'playcanvas';
+import { Transform } from '../transform/transform';
+import { BoundingBox } from 'playcanvas';
 
-/**
- * Base class for objects that appear in the scene manager
- * Provides common functionality for visibility and name management
- */
 class SceneObject extends Element {
     _visible: boolean = true;
 
     constructor(type: ElementType) {
         super(type);
+    }
+
+    get entity(): Entity {
+        throw new Error('SceneObject.entity must be implemented by subclass');
+    }
+
+    move(position?: Vec3, rotation?: Quat, scale?: Vec3) {
+        throw new Error('SceneObject.move must be implemented by subclass');
+    }
+
+    getPivot(mode: 'center' | 'boundCenter', selection: boolean, result: Transform) {
+        throw new Error('SceneObject.getPivot must be implemented by subclass');
+    }
+
+    get worldBound(): BoundingBox | null {
+        return null;
     }
 
     /**

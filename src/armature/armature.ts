@@ -3,8 +3,12 @@ import { SceneObject } from '../core/scene-object';
 import { ArmatureData, AnimationData } from '../file/loaders/binary-gsplat';
 import { Events } from '../events';
 import { BoneShape } from '../shapes/bone-shape';
-import { Mat4, Quat, Vec3 } from 'playcanvas';
+import { Entity, Mat4, Quat, Vec3, BoundingBox } from 'playcanvas';
 import { Splat } from '../splat/splat';
+import { Transform } from '../transform/transform';
+
+const vec = new Vec3();
+const bound = new BoundingBox();
 
 export class Armature extends SceneObject {
     armatureData: ArmatureData;
@@ -17,6 +21,9 @@ export class Armature extends SceneObject {
     private inverseBindPose: Mat4[] | null = null;
     private timelineTimeHandle: any = null;
     private timelineFrameHandle: any = null;
+    private _entity: Entity;
+    private _worldBound: BoundingBox = new BoundingBox();
+    private _worldBoundDirty: boolean = true;
     
     constructor(name: string, armatureData: ArmatureData, animationData?: AnimationData) {
         super(ElementType.armature);
@@ -25,6 +32,11 @@ export class Armature extends SceneObject {
         this.animationData = animationData;
         this.numBones = armatureData.numBones;
         this.numFrames = animationData ? animationData.numFrames : 0;
+        this._entity = new Entity('armaturePivot');
+    }
+
+    get entity(): Entity {
+        return this._entity;
     }
     
     add() {
@@ -35,6 +47,7 @@ export class Armature extends SceneObject {
         
         console.log('[Armature.add] Initializing armature:', this.name, 'numBones:', this.numBones, 'numFrames:', this.numFrames);
         
+        this.scene.contentRoot.addChild(this._entity);
         this.initializeInverseBindPose();
         
         if (this.animationData && this.numFrames > 0) {
@@ -80,6 +93,9 @@ export class Armature extends SceneObject {
     remove() {
         this.clearBoneVisualization();
         this.cleanupEventHandlers();
+        if (this._entity.parent) {
+            this._entity.parent.removeChild(this._entity);
+        }
     }
     
     calculateBindPoseTransforms(): Mat4[] | null {
@@ -280,30 +296,65 @@ export class Armature extends SceneObject {
         
         const meshesNeedCreation = this.boneMeshes.length === 0;
         
+        const armatureWorldToLocal = new Mat4();
+        armatureWorldToLocal.invert(this._entity.getWorldTransform());
+        
         for (let boneIdx = 0; boneIdx < numBones; boneIdx++) {
             if (meshesNeedCreation) {
                 const boneMesh = new BoneShape();
                 this.scene.add(boneMesh);
-
+                
                 const parentIdx = this.armatureData.stdMaleParents![boneIdx];
+                let parentPos: Vec3;
+                let jointPos: Vec3;
+                
                 if (parentIdx >= 0 && parentIdx < bonePositions.length) {
-                    boneMesh.setPivotPosition(bonePositions[parentIdx]);
-                    boneMesh.setJointPosition(bonePositions[boneIdx]);
+                    parentPos = bonePositions[parentIdx];
+                    jointPos = bonePositions[boneIdx];
                 } else {
-                    boneMesh.setPivotPosition(bonePositions[boneIdx]);
+                    parentPos = bonePositions[boneIdx];
+                    jointPos = bonePositions[boneIdx];
+                }
+                
+                const localParentPos = new Vec3();
+                const localJointPos = new Vec3();
+                armatureWorldToLocal.transformPoint(parentPos, localParentPos);
+                armatureWorldToLocal.transformPoint(jointPos, localJointPos);
+                
+                boneMesh.setPivotPosition(localParentPos);
+                if (parentIdx >= 0 && parentIdx < bonePositions.length) {
+                    boneMesh.setJointPosition(localJointPos);
+                } else {
                     boneMesh.setJointPosition(null);
                 }
+                
+                this._entity.addChild(boneMesh.pivot);
                 boneMesh.pivot.enabled = true;
                 this.boneMeshes.push(boneMesh);
             } else {
                 const boneMesh = this.boneMeshes[boneIdx];
                 if (boneMesh) {
                     const parentIdx = this.armatureData.stdMaleParents![boneIdx];
+                    let parentPos: Vec3;
+                    let jointPos: Vec3;
+                    
                     if (parentIdx >= 0 && parentIdx < bonePositions.length) {
-                        boneMesh.setPivotPosition(bonePositions[parentIdx]);
-                        boneMesh.setJointPosition(bonePositions[boneIdx]);
+                        parentPos = bonePositions[parentIdx];
+                        jointPos = bonePositions[boneIdx];
                     } else {
-                        boneMesh.setPivotPosition(bonePositions[boneIdx]);
+                        parentPos = bonePositions[boneIdx];
+                        jointPos = bonePositions[boneIdx];
+                    }
+                    
+                    const localParentPos = new Vec3();
+                    const localJointPos = new Vec3();
+                    armatureWorldToLocal.transformPoint(parentPos, localParentPos);
+                    armatureWorldToLocal.transformPoint(jointPos, localJointPos);
+                    
+                    boneMesh.setPivotPosition(localParentPos);
+                    if (parentIdx >= 0 && parentIdx < bonePositions.length) {
+                        boneMesh.setJointPosition(localJointPos);
+                    } else {
                         boneMesh.setJointPosition(null);
                     }
                 }
@@ -313,6 +364,8 @@ export class Armature extends SceneObject {
         if (meshesNeedCreation) {
             console.log(`[Armature] Visualized ${this.boneMeshes.length} bones as spheres`);
         }
+        
+        this._worldBoundDirty = true;
     }
     
     updateSplats(worldTransforms: Mat4[]) {
@@ -413,12 +466,27 @@ export class Armature extends SceneObject {
         this.boneMeshes = [];
     }
     
+    protected onVisibilityChanged() {
+        super.onVisibilityChanged();
+        this._entity.enabled = this.visible;
+        this.setBoneVisualizationVisible(this.visible);
+    }
+    
     setBoneVisualizationVisible(visible: boolean) {
         for (const mesh of this.boneMeshes) {
-            if (mesh.scene && mesh.pivot) {
+            if (mesh.pivot) {
                 mesh.pivot.enabled = visible;
-                this.scene.forceRender = true;
             }
+            if (mesh.jointPivot) {
+                mesh.jointPivot.enabled = visible;
+            }
+            if (mesh.cylinder) {
+                mesh.cylinder.enabled = visible;
+            }
+        }
+        
+        if (this.scene) {
+            this.scene.forceRender = true;
         }
     }
     
@@ -451,5 +519,90 @@ export class Armature extends SceneObject {
 
     getDisplayName(): string {
         return 'Armature';
+    }
+
+    move(position?: Vec3, rotation?: Quat, scale?: Vec3) {
+        if (position) {
+            this._entity.setLocalPosition(position);
+        }
+        if (rotation) {
+            this._entity.setLocalRotation(rotation);
+        }
+        if (scale) {
+            this._entity.setLocalScale(scale);
+        }
+        this._worldBoundDirty = true;
+        this.onMoved();
+    }
+
+    getPivot(mode: 'center' | 'boundCenter', selection: boolean, result: Transform) {
+        switch (mode) {
+            case 'center':
+                result.set(this._entity.getLocalPosition(), this._entity.getLocalRotation(), this._entity.getLocalScale());
+                break;
+            case 'boundCenter':
+                const worldBound = this.worldBound;
+                if (worldBound && worldBound.halfExtents.length() > 0) {
+                    worldBound.center.copy(vec);
+                    this._entity.getLocalTransform().transformPoint(vec, vec);
+                    result.set(vec, this._entity.getLocalRotation(), this._entity.getLocalScale());
+                } else {
+                    result.set(this._entity.getLocalPosition(), this._entity.getLocalRotation(), this._entity.getLocalScale());
+                }
+                break;
+        }
+    }
+
+    get worldBound(): BoundingBox {
+        if (this._worldBoundDirty) {
+            this._worldBound.center.set(0, 0, 0);
+            this._worldBound.halfExtents.set(0, 0, 0);
+            
+            if (this.boneMeshes.length > 0) {
+                let first = true;
+                const min1 = new Vec3();
+                const max1 = new Vec3();
+                const min2 = new Vec3();
+                const max2 = new Vec3();
+                
+                for (const boneMesh of this.boneMeshes) {
+                    const boneBound = boneMesh.worldBound;
+                    if (boneBound) {
+                        if (first) {
+                            this._worldBound.copy(boneBound);
+                            first = false;
+                        } else {
+                            min1.sub2(this._worldBound.center, this._worldBound.halfExtents);
+                            max1.add2(this._worldBound.center, this._worldBound.halfExtents);
+                            min2.sub2(boneBound.center, boneBound.halfExtents);
+                            max2.add2(boneBound.center, boneBound.halfExtents);
+                            
+                            const combinedMin = new Vec3(
+                                Math.min(min1.x, min2.x),
+                                Math.min(min1.y, min2.y),
+                                Math.min(min1.z, min2.z)
+                            );
+                            const combinedMax = new Vec3(
+                                Math.max(max1.x, max2.x),
+                                Math.max(max1.y, max2.y),
+                                Math.max(max1.z, max2.z)
+                            );
+                            combinedMin.add(combinedMax);
+                            combinedMin.mulScalar(0.5);
+                            combinedMax.sub(combinedMin);
+                            this._worldBound.center.copy(combinedMin);
+                            this._worldBound.halfExtents.set(
+                                Math.abs(combinedMax.x),
+                                Math.abs(combinedMax.y),
+                                Math.abs(combinedMax.z)
+                            );
+                        }
+                    }
+                }
+            }
+            
+            this._worldBoundDirty = false;
+        }
+        return this._worldBound;
     }
 }

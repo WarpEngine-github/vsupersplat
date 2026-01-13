@@ -23,31 +23,31 @@ class EntityTransformHandler implements TransformHandler {
         this.events = events;
 
         events.on('pivot.started', (pivot: Pivot) => {
-            if (this.selection instanceof Splat) {
+            if (this.selection && this.selection.entity) {
                 this.start();
             }
         });
 
         events.on('pivot.moved', (pivot: Pivot) => {
-            if (this.selection instanceof Splat) {
+            if (this.selection && this.selection.entity) {
                 this.update(pivot.transform);
             }
         });
 
         events.on('pivot.ended', (pivot: Pivot) => {
-            if (this.selection instanceof Splat) {
+            if (this.selection && this.selection.entity) {
                 this.end();
             }
         });
 
         events.on('pivot.origin', (mode: 'center' | 'boundCenter') => {
-            if (this.selection instanceof Splat) {
+            if (this.selection && this.selection.entity) {
                 this.placePivot();
             }
         });
 
         events.on('camera.focalPointPicked', (details: { splat: Splat, position: Vec3 }) => {
-            if (this.selection instanceof Splat && ['move', 'rotate', 'scale'].includes(this.events.invoke('tool.active'))) {
+            if (this.selection && this.selection.entity && ['move', 'rotate', 'scale'].includes(this.events.invoke('tool.active'))) {
                 const pivot = events.invoke('pivot') as Pivot;
                 const newt = new Transform(details.position, pivot.transform.rotation, pivot.transform.scale);
                 const op = new PlacePivotOp({ pivot, oldt: pivot.transform.clone(), newt });
@@ -57,10 +57,9 @@ class EntityTransformHandler implements TransformHandler {
     }
 
     placePivot() {
-        if (!(this.selection instanceof Splat)) {
+        if (!this.selection || !this.selection.entity) {
             return;
         }
-        // place initial pivot point
         const origin = this.events.invoke('pivot.origin');
         this.selection.getPivot(origin === 'center' ? 'center' : 'boundCenter', false, transform);
         this.events.invoke('pivot').place(transform);
@@ -68,7 +67,7 @@ class EntityTransformHandler implements TransformHandler {
 
     activate() {
         this.selection = this.events.invoke('selection') as SceneObject;
-        if (this.selection instanceof Splat) {
+        if (this.selection && this.selection.entity) {
             this.placePivot();
         }
     }
@@ -78,14 +77,13 @@ class EntityTransformHandler implements TransformHandler {
     }
 
     start() {
-        if (!(this.selection instanceof Splat)) {
+        if (!this.selection || !this.selection.entity) {
             return;
         }
         const pivot = this.events.invoke('pivot') as Pivot;
         const { transform } = pivot;
         const { entity } = this.selection;
 
-        // calculate bind matrix
         this.bindMat.setTRS(transform.position, transform.rotation, transform.scale);
         this.bindMat.invert();
         this.bindMat.mul2(this.bindMat, entity.getLocalTransform());
@@ -94,7 +92,6 @@ class EntityTransformHandler implements TransformHandler {
         const r = entity.getLocalRotation();
         const s = entity.getLocalScale();
 
-        // create op
         this.top = new EntityTransformOp({
             splat: this.selection,
             oldt: new Transform(p, r, s),
@@ -109,7 +106,7 @@ class EntityTransformHandler implements TransformHandler {
     }
 
     update(transform: Transform) {
-        if (!(this.selection instanceof Splat)) {
+        if (!this.selection || !this.selection.entity) {
             return;
         }
         mat.setTRS(transform.position, transform.rotation, transform.scale);
@@ -127,9 +124,8 @@ class EntityTransformHandler implements TransformHandler {
 
     end() {
         if (!this.top || !this.pop) {
-            return; // start() was never called (e.g., armature selected)
+            return;
         }
-        // if anything changed then register the op with undo/redo system
         const { oldt, newt } = this.top;
 
         if (!oldt.equals(newt)) {

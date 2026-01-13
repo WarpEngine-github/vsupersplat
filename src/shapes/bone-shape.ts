@@ -128,14 +128,10 @@ class BoneShape extends Element {
     }
 
     remove() {
-        if (this.pivot.parent) {
-            this.pivot.parent.removeChild(this.pivot);
-        }
-        if (this.jointPivot && this.jointPivot.parent) {
-            this.jointPivot.parent.removeChild(this.jointPivot);
-        }
-        if (this.cylinder && this.cylinder.parent) {
-            this.cylinder.parent.removeChild(this.cylinder);
+        if(this.scene.contentRoot) {
+            this.scene.contentRoot.removeChild(this.pivot);
+            this.scene.contentRoot.removeChild(this.jointPivot);
+            this.scene.contentRoot.removeChild(this.cylinder);
         }
         this.scene.boundDirty = true;
     }

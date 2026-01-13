@@ -198,26 +198,26 @@ class ResetOp extends StateOp {
 // op for modifying a splat transform
 class EntityTransformOp {
     name = 'entityTransform';
-    splat: Splat;
+    sceneObject: SceneObject;
     oldt: Transform;
     newt: Transform;
 
-    constructor(options: { splat: Splat, oldt: Transform, newt: Transform }) {
-        this.splat = options.splat;
+    constructor(options: { splat: SceneObject, oldt: Transform, newt: Transform }) {
+        this.sceneObject = options.splat;
         this.oldt = options.oldt;
         this.newt = options.newt;
     }
 
     do() {
-        this.splat.move(this.newt.position, this.newt.rotation, this.newt.scale);
+        this.sceneObject.move(this.newt.position, this.newt.rotation, this.newt.scale);
     }
 
     undo() {
-        this.splat.move(this.oldt.position, this.oldt.rotation, this.oldt.scale);
+        this.sceneObject.move(this.oldt.position, this.oldt.rotation, this.oldt.scale);
     }
 
     destroy() {
-        this.splat = null;
+        this.sceneObject = null;
         this.oldt = null;
         this.newt = null;
     }

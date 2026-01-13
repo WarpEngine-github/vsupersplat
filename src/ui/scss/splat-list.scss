@@ -44,6 +44,14 @@
             }
         }
 
+        // Indentation for children (each level = 20px indent)
+        &.splat-item-depth-0 { padding-left: 0px; }
+        &.splat-item-depth-1 { padding-left: 20px; }
+        &.splat-item-depth-2 { padding-left: 40px; }
+        &.splat-item-depth-3 { padding-left: 60px; }
+        &.splat-item-depth-4 { padding-left: 80px; }
+        &.splat-item-depth-5 { padding-left: 100px; }
+
         .splat-item-visible {
             flex-grow: 0;
             flex-shrink: 0;

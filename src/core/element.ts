@@ -53,6 +53,10 @@ class Element {
      */
     protected addChildElement(child: Element) {
         this._childElements.add(child);
+        // Fire event to notify that hierarchy has changed
+        if (this.scene) {
+            this.scene.events.fire('scene.hierarchyChanged');
+        }
     }
 
     /**
@@ -60,6 +64,10 @@ class Element {
      */
     protected removeChildElement(child: Element) {
         this._childElements.delete(child);
+        // Fire event to notify that hierarchy has changed
+        if (this.scene) {
+            this.scene.events.fire('scene.hierarchyChanged');
+        }
     }
 
     /**

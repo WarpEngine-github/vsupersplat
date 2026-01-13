@@ -3,6 +3,7 @@ import { Container, Label, Element as PcuiElement, TextInput } from '@playcanvas
 import { ElementType } from '../core/element';
 import { SceneObject } from '../core/scene-object';
 import { Events } from '../events';
+import { Scene } from '../core/scene';
 import { Splat } from '../splat/splat';
 import deleteSvg from './svg/delete.svg';
 import hiddenSvg from './svg/hidden.svg';
@@ -162,6 +163,18 @@ class SplatItem extends Container {
     get visible() {
         return this.getVisible();
     }
+
+    /**
+     * Set the depth level for indentation
+     */
+    setDepth(depth: number) {
+        // Remove all existing depth classes
+        for (let i = 0; i <= 10; i++) {
+            this.class.remove(`splat-item-depth-${i}`);
+        }
+        // Add the new depth class
+        this.class.add(`splat-item-depth-${depth}`);
+    }
 }
 
 class SplatList extends Container {
@@ -180,11 +193,83 @@ class SplatList extends Container {
             id: 'splat-edit'
         });
 
+        /**
+         * Find the parent of an element by checking if it's in any other element's childElements
+         */
+        const findParent = (element: SceneObject): SceneObject | null => {
+            for (const [otherElement, _] of items) {
+                if (otherElement.childElements.has(element)) {
+                    return otherElement;
+                }
+            }
+            return null;
+        };
+
+        /**
+         * Build hierarchical structure and return flat list with depth information
+         */
+        const buildHierarchy = (): Array<{ element: SceneObject; depth: number }> => {
+            const result: Array<{ element: SceneObject; depth: number }> = [];
+            const visited = new Set<SceneObject>();
+
+            // Find root elements (elements that are not children of any other element)
+            const rootElements: SceneObject[] = [];
+            for (const [element, _] of items) {
+                const parent = findParent(element);
+                if (!parent) {
+                    rootElements.push(element);
+                }
+            }
+
+            // Recursively traverse hierarchy starting from roots
+            const traverse = (element: SceneObject, depth: number) => {
+                if (visited.has(element)) {
+                    return; // Prevent cycles
+                }
+                visited.add(element);
+                result.push({ element, depth });
+
+                // Add children in order
+                for (const child of element.childElements) {
+                    if (child instanceof SceneObject && items.has(child)) {
+                        traverse(child, depth + 1);
+                    }
+                }
+            };
+
+            // Traverse from all root elements
+            for (const root of rootElements) {
+                traverse(root, 0);
+            }
+
+            return result;
+        };
+
+        /**
+         * Rebuild the hierarchy by reordering items and applying indentation
+         */
+        const rebuildHierarchy = () => {
+            const hierarchy = buildHierarchy();
+            
+            // Remove all items from DOM (but keep them in the items Map)
+            for (const [_, item] of items) {
+                this.remove(item);
+            }
+
+            // Re-add items in hierarchical order with proper depth
+            for (const { element, depth } of hierarchy) {
+                const item = items.get(element);
+                if (item) {
+                    item.setDepth(depth);
+                    this.append(item);
+                }
+            }
+        };
+
         events.on('scene.elementAdded', (element: SceneObject) => {
             // Handle scene objects (splats and armatures)
             if (element instanceof SceneObject && (element.type === ElementType.splat || element.type === ElementType.armature)) {
                 const item = new SplatItem(element.name, edit);
-                this.append(item);
                 items.set(element, item);
 
                 item.on('visible', () => {
@@ -199,6 +284,9 @@ class SplatList extends Container {
                 item.on('rename', (value: string) => {
                     element.rename(value);
                 });
+
+                // Rebuild hierarchy to include new element
+                rebuildHierarchy();
             }
         });
 
@@ -208,6 +296,8 @@ class SplatList extends Container {
                 if (item) {
                     this.remove(item);
                     items.delete(element);
+                    // Rebuild hierarchy after removal
+                    rebuildHierarchy();
                 }
             }
         });
@@ -239,6 +329,11 @@ class SplatList extends Container {
 
         events.on('splat.visibility', handleVisibilityChange);
         events.on('armature.visibility', handleVisibilityChange);
+
+        // Rebuild hierarchy when parent-child relationships change
+        events.on('scene.hierarchyChanged', () => {
+            rebuildHierarchy();
+        });
 
         this.on('click', (item: SplatItem) => {
             for (const [key, value] of items) {

@@ -3,12 +3,33 @@ import { SceneObject } from '../core/scene-object';
 import { ArmatureData, AnimationData } from '../file/loaders/binary-gsplat';
 import { Events } from '../events';
 import { BoneShape } from '../shapes/bone-shape';
-import { Entity, Mat4, Quat, Vec3, BoundingBox } from 'playcanvas';
+import { Entity, Mat4, Quat, Vec3, BoundingBox, Color } from 'playcanvas';
 import { Splat } from '../splat/splat';
 import { Transform } from '../transform/transform';
 
 const vec = new Vec3();
 const bound = new BoundingBox();
+const veca = new Vec3();
+const vecb = new Vec3();
+
+// Bounding box edge points: 12 edges of a unit cube
+const boundingPoints = [
+    // Bottom face edges
+    new Vec3(-1, -1, -1), new Vec3(1, -1, -1),
+    new Vec3(-1, -1, -1), new Vec3(-1, -1, 1),
+    new Vec3(1, -1, -1), new Vec3(1, -1, 1),
+    new Vec3(-1, -1, 1), new Vec3(1, -1, 1),
+    // Top face edges
+    new Vec3(-1, 1, -1), new Vec3(1, 1, -1),
+    new Vec3(-1, 1, -1), new Vec3(-1, 1, 1),
+    new Vec3(1, 1, -1), new Vec3(1, 1, 1),
+    new Vec3(-1, 1, 1), new Vec3(1, 1, 1),
+    // Vertical edges
+    new Vec3(-1, -1, -1), new Vec3(-1, 1, -1),
+    new Vec3(1, -1, -1), new Vec3(1, 1, -1),
+    new Vec3(-1, -1, 1), new Vec3(-1, 1, 1),
+    new Vec3(1, -1, 1), new Vec3(1, 1, 1)
+];
 
 export class Armature extends SceneObject {
     armatureData: ArmatureData;
@@ -533,6 +554,14 @@ export class Armature extends SceneObject {
             this._entity.setLocalScale(scale);
         }
         this._worldBoundDirty = true;
+        
+        // When armature moves, child bone meshes' world positions change
+        // but their local positions don't, so moved() won't be called automatically
+        // Manually call moved() on all bone meshes to update their bounds
+        for (const boneMesh of this.boneMeshes) {
+            boneMesh.moved();
+        }
+        
         this.onMoved();
     }
 
@@ -605,5 +634,31 @@ export class Armature extends SceneObject {
             this._worldBoundDirty = false;
         }
         return this._worldBound;
+    }
+
+    onPreRender() {
+        const events = this.scene.events;
+        const selected = this.scene.camera.renderOverlays && events.invoke('selection') === this;
+
+        if (this.visible && selected) {
+            // render bounding box
+            if (events.invoke('camera.bound')) {
+                const worldBound = this.worldBound;
+                if (worldBound && worldBound.halfExtents.length() > 0) {
+                    // Create transform matrix from bounding box
+                    const scale = new Mat4().setTRS(worldBound.center, Quat.IDENTITY, worldBound.halfExtents);
+
+                    // Draw all 12 edges of the bounding box
+                    for (let i = 0; i < boundingPoints.length / 2; i++) {
+                        const a = boundingPoints[i * 2];
+                        const b = boundingPoints[i * 2 + 1];
+                        scale.transformPoint(a, veca);
+                        scale.transformPoint(b, vecb);
+
+                        this.scene.app.drawLine(veca, vecb, Color.WHITE, true, this.scene.debugLayer);
+                    }
+                }
+            }
+        }
     }
 }

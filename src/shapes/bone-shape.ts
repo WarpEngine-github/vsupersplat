@@ -14,7 +14,6 @@ import { sphereVertexShader, sphereFragmentShader } from '../shaders/bone-shape-
 import { cylinderVertexShader, cylinderFragmentShader } from '../shaders/bone-shape-shader';
 
 const v = new Vec3();
-const bound = new BoundingBox();
 
 interface SphereConfig {
     name: string;
@@ -45,6 +44,8 @@ class BoneShape extends Element {
     material: ShaderMaterial;
     jointMaterial: ShaderMaterial | null = null;
     cylinderMaterial: ShaderMaterial | null = null;
+    private _localBound: BoundingBox = new BoundingBox();
+    private _worldBound: BoundingBox = new BoundingBox();
 
     constructor() {
         super(ElementType.debug);
@@ -57,7 +58,7 @@ class BoneShape extends Element {
         });
         const r = config.radius * 2;
         entity.setLocalScale(r, r, r);
-        entity.setPosition(config.position);
+        entity.setLocalPosition(config.position);
 
         const material = new ShaderMaterial({
             uniqueName: `boneShape_${config.name}`,
@@ -88,7 +89,7 @@ class BoneShape extends Element {
         const midpoint = new Vec3();
         midpoint.add2(config.startPosition, config.endPosition);
         midpoint.mulScalar(0.5);
-        entity.setPosition(midpoint);
+        entity.setLocalPosition(midpoint);
 
         const material = new ShaderMaterial({
             uniqueName: `cylinderShape_${config.name}`,
@@ -163,12 +164,16 @@ class BoneShape extends Element {
         }
         
         if (this.cylinder && this.cylinderMaterial) {
-            const parentPos = this.pivot.getPosition();
-            const jointPos = this.jointPivot ? this.jointPivot.getPosition() : null;
+            // Get world positions for shader parameters
+            const parentWorldPos = new Vec3();
+            this.pivot.getWorldTransform().getTranslation(parentWorldPos);
             
-            if (jointPos) {
-                this.cylinderMaterial.setParameter('startPosition', [parentPos.x, parentPos.y, parentPos.z]);
-                this.cylinderMaterial.setParameter('endPosition', [jointPos.x, jointPos.y, jointPos.z]);
+            if (this.jointPivot) {
+                const jointWorldPos = new Vec3();
+                this.jointPivot.getWorldTransform().getTranslation(jointWorldPos);
+                
+                this.cylinderMaterial.setParameter('startPosition', [parentWorldPos.x, parentWorldPos.y, parentWorldPos.z]);
+                this.cylinderMaterial.setParameter('endPosition', [jointWorldPos.x, jointWorldPos.y, jointWorldPos.z]);
                 this.cylinderMaterial.setParameter('cylinderColor', [this._cylinderColor.x, this._cylinderColor.y, this._cylinderColor.z]);
             }
         }
@@ -179,27 +184,94 @@ class BoneShape extends Element {
     }
 
     updateBound() {
-        bound.center.copy(this.pivot.getPosition());
-        bound.halfExtents.set(this.radius, this.radius, this.radius);
+        // Calculate local bounds encompassing pivot sphere, joint sphere, and cylinder
+        // Use local positions since entities are children of armature._entity
+        const pivotPos = this.pivot.getLocalPosition();
+        const pivotRadius = this._radius;
+        
+        this._localBound.center.copy(pivotPos);
+        this._localBound.halfExtents.set(pivotRadius, pivotRadius, pivotRadius);
+        
+        // Expand to include joint sphere if it exists
+        if (this.jointPivot) {
+            const jointPos = this.jointPivot.getLocalPosition();
+            const jointRadius = this._jointRadius;
+            
+            const min = new Vec3();
+            const max = new Vec3();
+            min.sub2(this._localBound.center, this._localBound.halfExtents);
+            max.add2(this._localBound.center, this._localBound.halfExtents);
+            
+            const jointMin = new Vec3(jointPos.x - jointRadius, jointPos.y - jointRadius, jointPos.z - jointRadius);
+            const jointMax = new Vec3(jointPos.x + jointRadius, jointPos.y + jointRadius, jointPos.z + jointRadius);
+            
+            min.x = Math.min(min.x, jointMin.x);
+            min.y = Math.min(min.y, jointMin.y);
+            min.z = Math.min(min.z, jointMin.z);
+            max.x = Math.max(max.x, jointMax.x);
+            max.y = Math.max(max.y, jointMax.y);
+            max.z = Math.max(max.z, jointMax.z);
+            
+            // Also include cylinder endpoints
+            if (this.cylinder) {
+                const startPos = this.pivot.getLocalPosition();
+                const endPos = jointPos;
+                const cylinderRadius = this._radius * 0.8;
+                
+                const startMin = new Vec3(startPos.x - cylinderRadius, startPos.y - cylinderRadius, startPos.z - cylinderRadius);
+                const startMax = new Vec3(startPos.x + cylinderRadius, startPos.y + cylinderRadius, startPos.z + cylinderRadius);
+                const endMin = new Vec3(endPos.x - cylinderRadius, endPos.y - cylinderRadius, endPos.z - cylinderRadius);
+                const endMax = new Vec3(endPos.x + cylinderRadius, endPos.y + cylinderRadius, endPos.z + cylinderRadius);
+                
+                min.x = Math.min(min.x, startMin.x, endMin.x);
+                min.y = Math.min(min.y, startMin.y, endMin.y);
+                min.z = Math.min(min.z, startMin.z, endMin.z);
+                max.x = Math.max(max.x, startMax.x, endMax.x);
+                max.y = Math.max(max.y, startMax.y, endMax.y);
+                max.z = Math.max(max.z, startMax.z, endMax.z);
+            }
+            
+            min.add(max);
+            min.mulScalar(0.5);
+            max.sub(min);
+            
+            this._localBound.center.copy(min);
+            this._localBound.halfExtents.set(Math.abs(max.x), Math.abs(max.y), Math.abs(max.z));
+        }
+        
         this.scene.boundDirty = true;
     }
 
     get worldBound(): BoundingBox | null {
-        return bound;
+        if (!this.pivot) {
+            return null;
+        }
+        
+        // Always recalculate world bounds since parent transform may have changed
+        // Transform local bounds to world space using pivot's world transform
+        this._worldBound.setFromTransformedAabb(this._localBound, this.pivot.getWorldTransform());
+        
+        return this._worldBound;
     }
 
     setPivotPosition(position: Vec3) {
-        this.pivot.setPosition(position);
+        this.pivot.setLocalPosition(position);
         
         if (this.cylinder && this.cylinderMaterial && this.jointPivot) {
-            const jointPos = this.jointPivot.getPosition();
+            const jointPos = this.jointPivot.getLocalPosition();
             const midpoint = new Vec3();
             midpoint.add2(position, jointPos);
             midpoint.mulScalar(0.5);
-            this.cylinder.setPosition(midpoint);
+            this.cylinder.setLocalPosition(midpoint);
             
-            this.cylinderMaterial.setParameter('startPosition', [position.x, position.y, position.z]);
-            this.cylinderMaterial.setParameter('endPosition', [jointPos.x, jointPos.y, jointPos.z]);
+            // Update shader parameters with world positions
+            const parentWorldPos = new Vec3();
+            this.pivot.getWorldTransform().getTranslation(parentWorldPos);
+            const jointWorldPos = new Vec3();
+            this.jointPivot.getWorldTransform().getTranslation(jointWorldPos);
+            
+            this.cylinderMaterial.setParameter('startPosition', [parentWorldPos.x, parentWorldPos.y, parentWorldPos.z]);
+            this.cylinderMaterial.setParameter('endPosition', [jointWorldPos.x, jointWorldPos.y, jointWorldPos.z]);
         }
         
         this.updateBound();
@@ -219,7 +291,7 @@ class BoneShape extends Element {
                 this.jointPivot = jointSphere.entity;
                 this.jointMaterial = jointSphere.material;
                 
-                const parentPos = this.pivot.getPosition();
+                const parentPos = this.pivot.getLocalPosition();
                 const cylinderConfig: CylinderConfig = {
                     name: 'boneCylinder',
                     startPosition: parentPos,
@@ -232,17 +304,23 @@ class BoneShape extends Element {
                 this.cylinder = cylinderResult.entity;
                 this.cylinderMaterial = cylinderResult.material;
             } else if (this.jointPivot) {
-                this.jointPivot.setPosition(position);
+                this.jointPivot.setLocalPosition(position);
                 
                 if (this.cylinder && this.cylinderMaterial) {
-                    const parentPos = this.pivot.getPosition();
+                    const parentPos = this.pivot.getLocalPosition();
                     const midpoint = new Vec3();
                     midpoint.add2(parentPos, position);
                     midpoint.mulScalar(0.5);
-                    this.cylinder.setPosition(midpoint);
+                    this.cylinder.setLocalPosition(midpoint);
                     
-                    this.cylinderMaterial.setParameter('startPosition', [parentPos.x, parentPos.y, parentPos.z]);
-                    this.cylinderMaterial.setParameter('endPosition', [position.x, position.y, position.z]);
+                    // Update shader parameters with world positions
+                    const parentWorldPos = new Vec3();
+                    this.pivot.getWorldTransform().getTranslation(parentWorldPos);
+                    const jointWorldPos = new Vec3();
+                    this.jointPivot.getWorldTransform().getTranslation(jointWorldPos);
+                    
+                    this.cylinderMaterial.setParameter('startPosition', [parentWorldPos.x, parentWorldPos.y, parentWorldPos.z]);
+                    this.cylinderMaterial.setParameter('endPosition', [jointWorldPos.x, jointWorldPos.y, jointWorldPos.z]);
                 }
             }
         } else {
@@ -262,7 +340,7 @@ class BoneShape extends Element {
     }
 
     getJointPosition(): Vec3 | null {
-        return this.jointPivot ? this.jointPivot.getPosition() : null;
+        return this.jointPivot ? this.jointPivot.getLocalPosition() : null;
     }
 
     set radius(radius: number) {

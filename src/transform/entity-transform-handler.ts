@@ -61,7 +61,7 @@ class EntityTransformHandler implements TransformHandler {
             return;
         }
         const origin = this.events.invoke('pivot.origin');
-        this.selection.getPivot(origin === 'center' ? 'center' : 'boundCenter', false, transform);
+        this.selection.getPivot(origin === 'center' ? 'center' : 'boundCenter', false, transform, 'world');
         this.events.invoke('pivot').place(transform);
     }
 
@@ -84,18 +84,20 @@ class EntityTransformHandler implements TransformHandler {
         const { transform } = pivot;
         const { entity } = this.selection;
 
+        // Pivot is in world space, so use world transform for bind matrix
         this.bindMat.setTRS(transform.position, transform.rotation, transform.scale);
         this.bindMat.invert();
-        this.bindMat.mul2(this.bindMat, entity.getLocalTransform());
+        this.bindMat.mul2(this.bindMat, entity.getWorldTransform());
 
-        const p = entity.getLocalPosition();
-        const r = entity.getLocalRotation();
-        const s = entity.getLocalScale();
+        // Store local position/rotation/scale for the operation (move() expects local transforms)
+        const localPos = entity.getLocalPosition();
+        const localRot = entity.getLocalRotation();
+        const localScale = entity.getLocalScale();
 
         this.top = new EntityTransformOp({
             splat: this.selection,
-            oldt: new Transform(p, r, s),
-            newt: new Transform(p, r, s)
+            oldt: new Transform(localPos, localRot, localScale),
+            newt: new Transform(localPos, localRot, localScale)
         });
 
         this.pop = new PlacePivotOp({
@@ -109,15 +111,28 @@ class EntityTransformHandler implements TransformHandler {
         if (!this.selection || !this.selection.entity) {
             return;
         }
+        // Calculate new world transform from pivot movement
         mat.setTRS(transform.position, transform.rotation, transform.scale);
         mat.mul2(mat, this.bindMat);
+        
+        // Convert world transform to local transform for the entity
+        if (this.selection.entity.parent) {
+            const parentWorldInv = new Mat4();
+            parentWorldInv.copy(this.selection.entity.parent.getWorldTransform());
+            parentWorldInv.invert();
+            mat.mul2(parentWorldInv, mat);
+        }
+        // If no parent, mat already contains the local transform
+        
         quat.setFromMat4(mat);
-
         const t = mat.getTranslation();
         const r = quat;
         const s = mat.getScale();
 
         this.selection.move(t, r, s);
+        
+        // Update operation with local transform (move() expects local transforms)
+        // t, r, s are already in local space after conversion above
         this.top.newt.set(t, r, s);
         this.pop.newt.copy(transform);
     }

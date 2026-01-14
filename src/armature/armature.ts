@@ -621,21 +621,59 @@ export class Armature extends SceneObject {
         this.onMoved();
     }
 
-    getPivot(mode: 'center' | 'boundCenter', selection: boolean, result: Transform) {
-        switch (mode) {
-            case 'center':
-                result.set(this._entity.getLocalPosition(), this._entity.getLocalRotation(), this._entity.getLocalScale());
-                break;
-            case 'boundCenter':
-                const worldBound = this.worldBound;
-                if (worldBound && worldBound.halfExtents.length() > 0) {
-                    worldBound.center.copy(vec);
-                    this._entity.getLocalTransform().transformPoint(vec, vec);
-                    result.set(vec, this._entity.getLocalRotation(), this._entity.getLocalScale());
-                } else {
-                    result.set(this._entity.getLocalPosition(), this._entity.getLocalRotation(), this._entity.getLocalScale());
-                }
-                break;
+    getPivot(mode: 'center' | 'boundCenter', selection: boolean, result: Transform, space: 'world' | 'local' = 'world') {
+        if (space === 'local') {
+            const localPos = this._entity.getLocalPosition();
+            const localRot = this._entity.getLocalRotation();
+            const localScale = this._entity.getLocalScale();
+            
+            switch (mode) {
+                case 'center':
+                    result.set(localPos, localRot, localScale);
+                    break;
+                case 'boundCenter':
+                    const localBound = this.worldBound;
+                    if (localBound && localBound.halfExtents.length() > 0) {
+                        // Convert world bound center to local space
+                        const parentWorldInv = new Mat4();
+                        if (this._entity.parent) {
+                            parentWorldInv.copy(this._entity.parent.getWorldTransform());
+                            parentWorldInv.invert();
+                            parentWorldInv.transformPoint(localBound.center, vec);
+                        } else {
+                            localBound.center.copy(vec);
+                        }
+                        result.set(vec, localRot, localScale);
+                    } else {
+                        result.set(localPos, localRot, localScale);
+                    }
+                    break;
+            }
+        } else {
+            const worldPos = new Vec3();
+            const worldRot = new Quat();
+            const worldScale = new Vec3();
+            const worldMat = this._entity.getWorldTransform();
+            
+            // Explicitly extract world transform components
+            worldMat.getTranslation(worldPos);
+            worldRot.setFromMat4(worldMat);
+            worldMat.getScale(worldScale);
+            
+            switch (mode) {
+                case 'center':
+                    result.set(worldPos, worldRot, worldScale);
+                    break;
+                case 'boundCenter':
+                    const worldBound = this.worldBound;
+                    if (worldBound && worldBound.halfExtents.length() > 0) {
+                        // worldBound.center is already in world space
+                        result.set(worldBound.center, worldRot, worldScale);
+                    } else {
+                        result.set(worldPos, worldRot, worldScale);
+                    }
+                    break;
+            }
         }
     }
 

@@ -602,16 +602,45 @@ class Splat extends SceneObject {
         return this._transparency;
     }
 
-    getPivot(mode: 'center' | 'boundCenter', selection: boolean, result: Transform) {
+    getPivot(mode: 'center' | 'boundCenter', selection: boolean, result: Transform, space: 'world' | 'local' = 'world') {
         const { entity } = this;
-        switch (mode) {
-            case 'center':
-                result.set(entity.getLocalPosition(), entity.getLocalRotation(), entity.getLocalScale());
-                break;
-            case 'boundCenter':
-                entity.getLocalTransform().transformPoint((selection ? this.selectionBound : this.localBound).center, vec);
-                result.set(vec, entity.getLocalRotation(), entity.getLocalScale());
-                break;
+        
+        if (space === 'local') {
+            const localPos = entity.getLocalPosition();
+            const localRot = entity.getLocalRotation();
+            const localScale = entity.getLocalScale();
+            
+            switch (mode) {
+                case 'center':
+                    result.set(localPos, localRot, localScale);
+                    break;
+                case 'boundCenter':
+                    const boundCenter = (selection ? this.selectionBound : this.localBound).center;
+                    // boundCenter is already in local space relative to the entity
+                    result.set(boundCenter, localRot, localScale);
+                    break;
+            }
+        } else {
+            const worldPos = new Vec3();
+            const worldRot = new Quat();
+            const worldScale = new Vec3();
+            const worldMat = entity.getWorldTransform();
+            
+            // Explicitly extract world transform components
+            worldMat.getTranslation(worldPos);
+            worldRot.setFromMat4(worldMat);
+            worldMat.getScale(worldScale);
+            
+            switch (mode) {
+                case 'center':
+                    result.set(worldPos, worldRot, worldScale);
+                    break;
+                case 'boundCenter':
+                    const boundCenter = (selection ? this.selectionBound : this.localBound).center;
+                    worldMat.transformPoint(boundCenter, vec);
+                    result.set(vec, worldRot, worldScale);
+                    break;
+            }
         }
     }
 

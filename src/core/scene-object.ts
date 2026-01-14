@@ -42,7 +42,7 @@ class SceneObject extends Element {
     }
 
 
-    getPivot(mode: 'center' | 'boundCenter', selection: boolean, result: Transform) {
+    getPivot(mode: 'center' | 'boundCenter', selection: boolean, result: Transform, space: 'world' | 'local' = 'world') {
         throw new Error('SceneObject.getPivot must be implemented by subclass');
     }
 

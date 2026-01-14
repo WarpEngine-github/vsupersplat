@@ -267,8 +267,11 @@ class SplatList extends Container {
         };
 
         events.on('scene.elementAdded', (element: SceneObject) => {
-            // Handle scene objects (splats and armatures)
-            if (element instanceof SceneObject && (element.type === ElementType.splat || element.type === ElementType.armature)) {
+            // Handle scene objects (splats, armatures, camera objects)
+            if (element instanceof SceneObject &&
+                (element.type === ElementType.splat ||
+                 element.type === ElementType.armature ||
+                 element.type === ElementType.cameraObject)) {
                 const item = new SplatItem(element.name, edit);
                 items.set(element, item);
 
@@ -291,7 +294,10 @@ class SplatList extends Container {
         });
 
         events.on('scene.elementRemoved', (element: SceneObject) => {
-            if (element instanceof SceneObject && (element.type === ElementType.splat || element.type === ElementType.armature)) {
+            if (element instanceof SceneObject &&
+                (element.type === ElementType.splat ||
+                 element.type === ElementType.armature ||
+                 element.type === ElementType.cameraObject)) {
                 const item = items.get(element);
                 if (item) {
                     this.remove(item);
@@ -318,6 +324,7 @@ class SplatList extends Container {
 
         events.on('splat.name', handleNameChange);
         events.on('armature.name', handleNameChange);
+        events.on('cameraObject.name', handleNameChange);
 
         // Handle visibility changes for all scene objects (generic handler)
         const handleVisibilityChange = (obj: SceneObject) => {
@@ -329,6 +336,7 @@ class SplatList extends Container {
 
         events.on('splat.visibility', handleVisibilityChange);
         events.on('armature.visibility', handleVisibilityChange);
+        events.on('cameraObject.visibility', handleVisibilityChange);
 
         // Rebuild hierarchy when parent-child relationships change
         events.on('scene.hierarchyChanged', () => {
@@ -339,8 +347,13 @@ class SplatList extends Container {
             for (const [key, value] of items) {
                 if (item === value) {
                     // Fire selection event for both splats and armatures
-                    events.fire('selection', key);
-                    key.onSelected();
+                    const current = events.invoke('selection') as SceneObject | null;
+                    if (current === key) {
+                        events.fire('selection', null);
+                    } else {
+                        events.fire('selection', key);
+                        key.onSelected();
+                    }
                     break;
                 }
             }

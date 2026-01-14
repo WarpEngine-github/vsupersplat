@@ -5,6 +5,7 @@ import { Serializer } from '../serializer';
 
 enum ElementType {
     camera = 'camera',
+    cameraObject = 'cameraObject',
     model = 'model',
     splat = 'splat',
     armature = 'armature',
@@ -15,6 +16,7 @@ enum ElementType {
 
 const ElementTypeList = [
     ElementType.camera,
+    ElementType.cameraObject,
     ElementType.model,
     ElementType.splat,
     ElementType.armature,

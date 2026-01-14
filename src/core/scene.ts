@@ -13,6 +13,7 @@ import {
 
 import { AssetLoader } from '../file/asset-loader';
 import { Camera } from './camera';
+import { CameraObject } from './camera-object';
 import { DataProcessor } from '../splat/data-processor';
 import { Element, ElementType, ElementTypeList } from './element';
 import { Events } from '../events';
@@ -54,6 +55,7 @@ class Scene {
     dataProcessor: DataProcessor;
     assetLoader: AssetLoader;
     camera: Camera;
+    cameraObject: CameraObject;
     splatOverlay: SplatOverlay;
     grid: Grid;
     outline: Outline;
@@ -204,6 +206,9 @@ class Scene {
         // create elements
         this.camera = new Camera();
         this.add(this.camera);
+
+        this.cameraObject = new CameraObject();
+        this.add(this.cameraObject);
 
         this.splatOverlay = new SplatOverlay();
         this.add(this.splatOverlay);

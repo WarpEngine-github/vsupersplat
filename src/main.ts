@@ -108,10 +108,10 @@ const initShortcuts = (events: Events) => {
             if (!scene) return;
 
             try {
-                // Load binary format from gs/assets/converted
+                // Load binary format from gs/assets/model/gs_example/converted
                 await events.invoke('import', [{
                     filename: 'header.json',
-                    url: '/gs/assets/converted/header.json'
+                    url: '/gs/assets/model/gs_example/converted/header.json'
                 }]);
             } catch (error) {
                 console.error('Failed to load binary splat:', error);

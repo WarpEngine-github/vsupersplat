@@ -285,8 +285,11 @@ const registerRenderEvents = (scene: Scene, events: Events) => {
             const last_forward = new Vec3(1, 0, 0);
 
             // prepare the frame for rendering
-            const prepareFrame = async (frameTime: number) => {
-                events.fire('timeline.time', frameTime);
+            const prepareFrame = async (frameTimeSeconds: number) => {
+                const timelineFrame = startFrame + frameTimeSeconds * animFrameRate;
+                // Keep both timeline.frame and timeline.time in sync for systems that listen to either.
+                events.fire('timeline.frame', timelineFrame);
+                events.fire('timeline.time', timelineFrame);
 
                 // manually update the camera so position and rotation are correct
                 scene.camera.onUpdate(0);
@@ -364,7 +367,7 @@ const registerRenderEvents = (scene: Scene, events: Events) => {
 
             for (let frameTime = 0; frameTime <= duration; frameTime += 1.0 / frameRate) {
                 // special case the first frame
-                await prepareFrame(startFrame + frameTime * animFrameRate);
+                await prepareFrame(frameTime);
 
                 // render a frame
                 scene.lockedRender = true;

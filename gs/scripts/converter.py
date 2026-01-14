@@ -24,10 +24,21 @@ def load_1185_skeleton(input_dir):
     """Load 1185-skeleton.json which contains all 1185 bone names"""
     # Try multiple possible locations
     possible_paths = [
+        str(Path(__file__).resolve().parents[1] / 'assets' / '1185-skeleton' / '1185-skeleton.json'),
         os.path.join(input_dir, '1185-skeleton.json'),
         os.path.join(input_dir, '..', '1185-skeleton.json'),  # One level up
         os.path.join(input_dir, '..', 'assets', '1185-skeleton.json'),  # In assets folder
+        os.path.join(input_dir, '..', 'assets', '1185-skeleton', '1185-skeleton.json'),  # assets/1185-skeleton
     ]
+
+    # Walk up the directory tree to find gs/assets/1185-skeleton.json
+    try:
+        current = Path(input_dir).resolve()
+        for parent in current.parents:
+            candidate = parent / 'assets' / '1185-skeleton.json'
+            possible_paths.append(str(candidate))
+    except Exception:
+        pass
     
     for skeleton_1185_path in possible_paths:
         if os.path.exists(skeleton_1185_path):
@@ -127,15 +138,31 @@ def process_data(input_path, output_dir, skeleton_path=None):
         if isinstance(x, torch.Tensor):
             return x.detach().cpu().numpy()
         return np.array(x)
+
+    input_dir = os.path.dirname(input_path)
     
     # Auto-detect skeleton.pt if not provided
     if skeleton_path is None:
-        input_dir = os.path.dirname(input_path)
         for name in ['skeleton.pt', '441-skeleton.pt']:
             candidate = os.path.join(input_dir, name)
             if os.path.exists(candidate):
                 skeleton_path = candidate
                 break
+        if skeleton_path is None:
+            # Try model/441_skeleton/pytorch/441-skeleton.pt relative to input
+            try:
+                current = Path(input_dir).resolve()
+                model_root = None
+                for parent in current.parents:
+                    if parent.name == 'model':
+                        model_root = parent
+                        break
+                if model_root:
+                    candidate = model_root / '441_skeleton' / 'pytorch' / '441-skeleton.pt'
+                    if candidate.exists():
+                        skeleton_path = str(candidate)
+            except Exception:
+                pass
     
     # Load 1185-skeleton.json for bone name mapping
     skeleton_1185_names = load_1185_skeleton(input_dir)
@@ -198,10 +225,24 @@ def process_data(input_path, output_dir, skeleton_path=None):
     
     # Auto-detect std_male.model.pt if available
     std_male_model_path = None
-    input_dir = os.path.dirname(input_path)
     std_male_candidate = os.path.join(input_dir, 'std_male.model.pt')
     if os.path.exists(std_male_candidate):
         std_male_model_path = std_male_candidate
+    else:
+        # Try model/std_male_model/pytorch/std_male.model.pt relative to input
+        try:
+            current = Path(input_dir).resolve()
+            model_root = None
+            for parent in current.parents:
+                if parent.name == 'model':
+                    model_root = parent
+                    break
+            if model_root:
+                candidate = model_root / 'std_male_model' / 'pytorch' / 'std_male.model.pt'
+                if candidate.exists():
+                    std_male_model_path = str(candidate)
+        except Exception:
+            pass
     
     # Load std_male.model.pt if available
     std_male_model_data = None

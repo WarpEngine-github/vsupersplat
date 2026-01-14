@@ -89,8 +89,8 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
             if (assetSource.url.startsWith('blob:')) {
                 // For blob URLs, use filename if available, otherwise default
                 return assetSource.filename ? 
-                    assetSource.filename.substring(0, assetSource.filename.lastIndexOf('/')) || '/gs/assets/converted' :
-                    '/gs/assets/converted';
+                    assetSource.filename.substring(0, assetSource.filename.lastIndexOf('/')) || '/gs/assets/model/gs_example/converted' :
+                    '/gs/assets/model/gs_example/converted';
             }
             // Remove filename from URL to get directory
             try {
@@ -104,7 +104,7 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
                 // If URL parsing fails, fall through to default
             }
         }
-        return '/gs/assets/converted';
+        return '/gs/assets/model/gs_example/converted';
     };
 
     const basePath = getBasePath();

@@ -45,6 +45,10 @@
             padding: 20px 10px;
 
             color: $text-primary;
+            cursor: text;
+            user-select: text;
+            -webkit-user-select: text;
+            white-space: pre-wrap;
 
             &::before {
                 font-family: 'pc-icon';

@@ -9,6 +9,7 @@ import { DownloadWriter, FileStreamWriter } from '../serialize/writer';
 import { Splat } from '../splat/splat';
 import { serializePly, serializePlyCompressed, SerializeSettings, serializeSplat, serializeViewer, ViewerExportSettings } from '../splat/splat-serialize';
 import { localize } from '../ui/localization';
+import { convertPklToBinary } from './pkl-converter';
 
 // ts compiler and vscode find this type, but eslint does not
 type FilePickerAcceptType = unknown;
@@ -79,6 +80,12 @@ const filePickerTypes: { [key: string]: FilePickerAcceptType } = {
         accept: {
             'application/zip': ['.zip']
         }
+    },
+    'pkl': {
+        description: 'Pickle File',
+        accept: {
+            'application/octet-stream': ['.pkl']
+        }
     }
 };
 
@@ -89,7 +96,7 @@ const allImportTypes = {
         'application/x-gaussian-splat': ['.json', '.sog', '.splat'],
         'image/webp': ['.webp'],
         'application/json': ['.lcc'],
-        'application/octet-stream': ['.bin'],
+        'application/octet-stream': ['.bin', '.pkl'],
         'text/plain': ['.txt']
     }
 };
@@ -135,6 +142,10 @@ const isBinaryGsplat = (filenames: string[]) => {
     return filenames.some(f => f === 'header.json' || f.endsWith('header.json'));
 };
 
+const isPkl = (filenames: string[]) => {
+    return filenames.length === 1 && filenames[0].endsWith('.pkl');
+};
+
 type ImportFile = {
     filename: string;
     url?: string;
@@ -143,6 +154,7 @@ type ImportFile = {
 };
 
 const vec = new Vec3();
+
 
 // load inria camera poses from json file
 const loadCameraPoses = async (file: ImportFile, events: Events) => {
@@ -345,6 +357,74 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
         return model;
     };
 
+    const importPkl = async (file: ImportFile, animationFrame: boolean) => {
+        try {
+            if (!file.contents) {
+                throw new Error('Missing pkl file contents');
+            }
+
+            const baseUrl = '/gs/assets/model/gs_example/converted';
+            const skeletonHeaderResponse = await fetch('/gs/assets/model/441_skeleton/converted/header.json');
+            if (!skeletonHeaderResponse.ok) {
+                throw new Error(`Failed to fetch 441 skeleton header (${skeletonHeaderResponse.status})`);
+            }
+            const skeletonHeader = await skeletonHeaderResponse.json();
+            const boneNames441 = Array.isArray(skeletonHeader.boneNames) ? skeletonHeader.boneNames : null;
+
+            const skeleton1185Response = await fetch('/gs/assets/1185-skeleton/1185-skeleton.json');
+            const skeleton1185Names = skeleton1185Response.ok ? await skeleton1185Response.json() : null;
+
+            const converted = await convertPklToBinary(file.contents, boneNames441, skeleton1185Names);
+
+            if (!converted.header) {
+                throw new Error('Failed to generate header from pkl conversion');
+            }
+
+            const stdMaleHeaderResponse = await fetch(`${baseUrl}/header.json`);
+            if (!stdMaleHeaderResponse.ok) {
+                throw new Error(`Failed to fetch std_male header (${stdMaleHeaderResponse.status})`);
+            }
+            const stdMaleHeader = await stdMaleHeaderResponse.json();
+
+            const parentsResponse = await fetch('/gs/assets/model/441_skeleton/converted/parents.bin');
+            if (!parentsResponse.ok) {
+                throw new Error(`Failed to fetch skeleton parents (${parentsResponse.status})`);
+            }
+            const parentsBuffer = await parentsResponse.arrayBuffer();
+            const skeletonCount = parentsBuffer.byteLength / 4;
+
+            converted.header.skeleton = {
+                count: skeletonCount,
+                file: 'skeleton.bin',
+                format: 'int32',
+                stride: 4
+            };
+
+            if (stdMaleHeader.stdMaleModel) {
+                converted.header.stdMaleModel = stdMaleHeader.stdMaleModel;
+            }
+
+            const headerBlob = new Blob([JSON.stringify(converted.header)], { type: 'application/json' });
+            const headerFile = new File([headerBlob], 'header.json', { type: 'application/json' });
+
+            const importFiles: ImportFile[] = [{ filename: 'header.json', contents: headerFile }];
+
+            for (const [filename, data] of converted.files.entries()) {
+                if (filename === 'header.json') {
+                    continue;
+                }
+                const normalized = new Uint8Array(data);
+                importFiles.push({ filename, contents: new File([normalized], filename) });
+            }
+
+            importFiles.push({ filename: 'skeleton.bin', contents: new File([parentsBuffer], 'skeleton.bin') });
+
+            return await importBinaryGsplat(importFiles, animationFrame);
+        } catch (error) {
+            await showLoadError(error.message ?? error, file.filename);
+        }
+    };
+
     const importLcc = async (files: ImportFile[], animationFrame: boolean) => {
         try {
             const meta = files.findIndex(f => f.filename.toLowerCase().endsWith('.lcc'));
@@ -393,6 +473,8 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
             // handle ply sequence
             events.fire('plysequence.setFrames', files.map(f => f.contents));
             events.fire('timeline.frame', 0);
+        } else if (isPkl(filenames)) {
+            result.push(await importPkl(files[0], animationFrame));
         } else if (isSog(filenames)) {
             // import unbundled sog model
             result.push(await importSog(files, animationFrame));
@@ -406,7 +488,7 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
             // check for unrecognized file types
             for (let i = 0; i < filenames.length; i++) {
                 const filename = filenames[i].toLowerCase();
-                if (['.ssproj', '.ply', '.splat', '.sog', '.webp', 'images.txt', '.json'].every(ext => !filename.endsWith(ext))) {
+                if (['.ssproj', '.ply', '.splat', '.sog', '.webp', 'images.txt', '.json', '.pkl'].every(ext => !filename.endsWith(ext))) {
                     await showLoadError('Unrecognized file type', filename);
                     return;
                 }
@@ -422,6 +504,8 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
                 } else if (['.ply', '.splat', '.sog'].some(ext => filename.endsWith(ext))) {
                     // load gaussian splat model
                     result.push(await importFile(files[i], animationFrame));
+                } else if (filename.endsWith('.pkl')) {
+                    result.push(await importPkl(files[i], animationFrame));
                 } else if (filename.endsWith('images.txt')) {
                     // load colmap frames
                     await loadImagesTxt(files[i], events);
@@ -445,7 +529,7 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
         fileSelector = document.createElement('input');
         fileSelector.setAttribute('id', 'file-selector');
         fileSelector.setAttribute('type', 'file');
-        fileSelector.setAttribute('accept', '.ply,.splat,meta.json,.json,.webp,.ssproj,.sog,.lcc,.bin,.txt');
+        fileSelector.setAttribute('accept', '.ply,.splat,meta.json,.json,.webp,.ssproj,.sog,.lcc,.bin,.pkl,.txt');
         fileSelector.setAttribute('multiple', 'true');
 
         fileSelector.onchange = () => {

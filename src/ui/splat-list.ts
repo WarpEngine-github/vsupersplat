@@ -1,4 +1,5 @@
 import { Container, Label, Element as PcuiElement, TextInput } from '@playcanvas/pcui';
+import { Quat, Vec3 } from 'playcanvas';
 
 import { ElementType } from '../core/element';
 import { SceneObject } from '../core/scene-object';
@@ -23,6 +24,7 @@ class SplatItem extends Container {
     getVisible: () => boolean;
     setVisible: (value: boolean) => void;
     setCameraActionVisible: (value: boolean) => void;
+    setCameraActionActive: (value: boolean) => void;
     destroy: () => void;
 
     constructor(name: string, edit: TextInput, args = {}) {
@@ -118,11 +120,8 @@ class SplatItem extends Container {
             this.emit('removeClicked', this);
         };
 
-        let cameraActive = false;
         const handleCameraAction = (event: MouseEvent) => {
             event.stopPropagation();
-            cameraActive = !cameraActive;
-            cameraAction.class.toggle('active', cameraActive);
             this.emit('cameraAction', this);
         };
 
@@ -160,6 +159,10 @@ class SplatItem extends Container {
 
         this.setCameraActionVisible = (value: boolean) => {
             cameraAction.hidden = !value;
+        };
+
+        this.setCameraActionActive = (value: boolean) => {
+            cameraAction.class.toggle('active', value);
         };
     }
 
@@ -289,6 +292,9 @@ class SplatList extends Container {
             }
         };
 
+        let activeCameraElement: SceneObject | null = null;
+        let savedCameraPose: { position: Vec3; rotation: Quat } | null = null;
+
         events.on('scene.elementAdded', (element: SceneObject) => {
             // Handle scene objects (splats, armatures, camera objects)
             if (element instanceof SceneObject &&
@@ -297,7 +303,43 @@ class SplatList extends Container {
                  element.type === ElementType.cameraObject)) {
                 const item = new SplatItem(element.name, edit);
                 item.setCameraActionVisible(element.type === ElementType.cameraObject);
+                item.setCameraActionActive(element === activeCameraElement);
                 items.set(element, item);
+
+                item.on('cameraAction', () => {
+                    if (element.type !== ElementType.cameraObject || !element.entity) {
+                        return;
+                    }
+                    if (activeCameraElement === element) {
+                        if (savedCameraPose) {
+                            events.fire('camera.setPose', savedCameraPose, 0);
+                        }
+                        item.setCameraActionActive(false);
+                        activeCameraElement = null;
+                        savedCameraPose = null;
+                        return;
+                    }
+
+                    if (!activeCameraElement) {
+                        const pose = events.invoke('camera.getPose') as { position: Vec3; rotation: Quat };
+                        if (pose) {
+                            savedCameraPose = {
+                                position: pose.position.clone(),
+                                rotation: pose.rotation.clone()
+                            };
+                        }
+                    } else {
+                        const prevItem = items.get(activeCameraElement);
+                        prevItem?.setCameraActionActive(false);
+                    }
+
+                    const position = element.entity.getPosition().clone();
+                    const rotation = element.entity.getRotation().clone();
+                    activeCameraElement = element;
+                    item.setCameraActionActive(true);
+                    events.fire('selection', element);
+                    events.fire('camera.setPose', { position, rotation }, 0);
+                });
 
                 item.on('visible', () => {
                     element.visible = true;
@@ -329,6 +371,14 @@ class SplatList extends Container {
                     // Rebuild hierarchy after removal
                     rebuildHierarchy();
                 }
+            }
+
+            if (element === activeCameraElement) {
+                if (savedCameraPose) {
+                    events.fire('camera.setPose', savedCameraPose, 0);
+                }
+                activeCameraElement = null;
+                savedCameraPose = null;
             }
         });
 

@@ -90,5 +90,38 @@
                 color: $text-primary;
             }
         }
+
+        .splat-item-camera {
+            flex-grow: 0;
+            flex-shrink: 0;
+
+            width: 24px;
+            height: 24px;
+            line-height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            color: $text-secondary;
+
+            cursor: pointer;
+
+            &:hover {
+                background-color: $bcg-darkest;
+            }
+
+            &:hover:not(.active) {
+                color: $text-primary;
+            }
+
+            &.active {
+                color: $clr-hilight;
+            }
+
+            &.active:hover {
+                color: $clr-hilight;
+                background-color: $bcg-darkest;
+            }
+        }
     }
 }

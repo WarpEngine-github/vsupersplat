@@ -6,6 +6,7 @@ import { Events } from '../events';
 import { Scene } from '../core/scene';
 import { Splat } from '../splat/splat';
 import deleteSvg from './svg/delete.svg';
+import cameraPanelSvg from './svg/camera-panel.svg';
 import hiddenSvg from './svg/hidden.svg';
 import shownSvg from './svg/shown.svg';
 
@@ -21,6 +22,7 @@ class SplatItem extends Container {
     setSelected: (value: boolean) => void;
     getVisible: () => boolean;
     setVisible: (value: boolean) => void;
+    setCameraActionVisible: (value: boolean) => void;
     destroy: () => void;
 
     constructor(name: string, edit: TextInput, args = {}) {
@@ -52,7 +54,14 @@ class SplatItem extends Container {
             class: 'splat-item-delete'
         });
 
+        const cameraAction = new PcuiElement({
+            dom: createSvg(cameraPanelSvg),
+            class: 'splat-item-camera',
+            hidden: true
+        });
+
         this.append(text);
+        this.append(cameraAction);
         this.append(visible);
         this.append(invisible);
         this.append(remove);
@@ -109,6 +118,14 @@ class SplatItem extends Container {
             this.emit('removeClicked', this);
         };
 
+        let cameraActive = false;
+        const handleCameraAction = (event: MouseEvent) => {
+            event.stopPropagation();
+            cameraActive = !cameraActive;
+            cameraAction.class.toggle('active', cameraActive);
+            this.emit('cameraAction', this);
+        };
+
         // rename on double click
         text.dom.addEventListener('dblclick', (event: MouseEvent) => {
             event.stopPropagation();
@@ -132,11 +149,17 @@ class SplatItem extends Container {
         visible.dom.addEventListener('click', toggleVisible);
         invisible.dom.addEventListener('click', toggleVisible);
         remove.dom.addEventListener('click', handleRemove);
+        cameraAction.dom.addEventListener('click', handleCameraAction);
 
         this.destroy = () => {
             visible.dom.removeEventListener('click', toggleVisible);
             invisible.dom.removeEventListener('click', toggleVisible);
             remove.dom.removeEventListener('click', handleRemove);
+            cameraAction.dom.removeEventListener('click', handleCameraAction);
+        };
+
+        this.setCameraActionVisible = (value: boolean) => {
+            cameraAction.hidden = !value;
         };
     }
 
@@ -273,6 +296,7 @@ class SplatList extends Container {
                  element.type === ElementType.armature ||
                  element.type === ElementType.cameraObject)) {
                 const item = new SplatItem(element.name, edit);
+                item.setCameraActionVisible(element.type === ElementType.cameraObject);
                 items.set(element, item);
 
                 item.on('visible', () => {

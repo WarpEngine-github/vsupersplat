@@ -300,7 +300,14 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
 
         // Determine number of bones from weights (max bone index + 1)
         if (boneIndices.length > 0) {
-            numBonesFromWeights = Math.max(...Array.from(boneIndices)) + 1;
+            let maxIndex = 0;
+            for (let i = 0; i < boneIndices.length; i++) {
+                const v = boneIndices[i];
+                if (v > maxIndex) {
+                    maxIndex = v;
+                }
+            }
+            numBonesFromWeights = maxIndex + 1;
         }
         
         weightsLoaded = true;

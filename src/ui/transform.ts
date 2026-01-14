@@ -1,4 +1,4 @@
-import { Container, ContainerArgs, Label, NumericInput, VectorInput } from '@playcanvas/pcui';
+import { Container, ContainerArgs, Label, NumericInput, SelectInput, VectorInput } from '@playcanvas/pcui';
 import { Mat4, Quat, Vec3 } from 'playcanvas';
 
 import { Events } from '../events';
@@ -83,9 +83,34 @@ class Transform extends Container {
         scale.append(scaleLabel);
         scale.append(scaleInput);
 
+        // animation
+        const animation = new Container({
+            class: 'transform-row'
+        });
+
+        const animationLabel = new Label({
+            class: 'transform-label',
+            text: 'Animation'
+        });
+
+        const animationSelect = new SelectInput({
+            class: 'transform-expand',
+            defaultValue: 'none',
+            options: [
+                { v: 'none', t: 'None' },
+                { v: 'anim_1', t: 'Animation 1' },
+                { v: 'anim_2', t: 'Animation 2' },
+                { v: 'anim_3', t: 'Animation 3' }
+            ]
+        });
+
+        animation.append(animationLabel);
+        animation.append(animationSelect);
+
         this.append(position);
         this.append(rotation);
         this.append(scale);
+        this.append(animation);
 
         const toArray = (v: Vec3) => {
             return [v.x, v.y, v.z];
@@ -196,20 +221,21 @@ class Transform extends Container {
         // toggle ui availability based on selection
         events.on('selection.changed', (selection) => {
             positionVector.enabled = rotationVector.enabled = scaleInput.enabled = !!selection;
+            animationSelect.enabled = !!selection;
         });
 
         events.on('pivot.placed', (pivot: Pivot) => {
-            updateUI(pivot);
+            updateUI();
         });
 
         events.on('pivot.moved', (pivot: Pivot) => {
             if (!mouseUpdating) {
-                updateUI(pivot);
+                updateUI();
             }
         });
 
         events.on('pivot.ended', (pivot: Pivot) => {
-            updateUI(pivot);
+            updateUI();
         });
     }
 }

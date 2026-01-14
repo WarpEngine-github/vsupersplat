@@ -1,9 +1,10 @@
 import { Container, ContainerArgs, Label, NumericInput, VectorInput } from '@playcanvas/pcui';
-import { Quat, Vec3 } from 'playcanvas';
+import { Mat4, Quat, Vec3 } from 'playcanvas';
 
 import { Events } from '../events';
 import { localize } from './localization';
 import { Pivot } from '../transform/pivot';
+import { SceneObject } from '../core/scene-object';
 
 const v = new Vec3();
 
@@ -94,13 +95,24 @@ class Transform extends Container {
         let mouseUpdating = false;
 
         // update UI with pivot
-        const updateUI = (pivot: Pivot) => {
+        const updateUI = () => {
+            const selection = events.invoke('selection') as SceneObject | null;
+            if (!selection || !selection.entity) {
+                return;
+            }
+
             uiUpdating = true;
-            const transform = pivot.transform;
-            transform.rotation.getEulerAngles(v);
-            positionVector.value = toArray(transform.position);
+            
+            // Get local transforms directly from entity
+            const localPos = selection.entity.getLocalPosition();
+            const localRot = selection.entity.getLocalRotation();
+            const localScale = selection.entity.getLocalScale();
+            
+            localRot.getEulerAngles(v);
+            positionVector.value = toArray(localPos);
             rotationVector.value = toArray(v);
-            scaleInput.value = transform.scale.x;
+            scaleInput.value = localScale.x;
+            
             uiUpdating = false;
         };
 
@@ -115,7 +127,37 @@ class Transform extends Container {
                 q.mulScalar(-1);
             }
 
-            pivot.moveTRS(new Vec3(p[0], p[1], p[2]), q, new Vec3(s, s, s));
+            // Convert local transform to world space
+            const localPosVec = new Vec3(p[0], p[1], p[2]);
+            const localScaleVec = new Vec3(s, s, s);
+            
+            // Build local transform matrix
+            const localMat = new Mat4();
+            localMat.setTRS(localPosVec, q, localScaleVec);    
+
+            const selection = events.invoke('selection') as SceneObject | null;
+            if (!selection || !selection.entity) {
+                return;
+            }
+
+            // Multiply by parent's world transform if parent exists
+            const worldMat = new Mat4();
+            if (selection.entity.parent) {
+                const parentWorldMat = selection.entity.parent.getWorldTransform();
+                worldMat.mul2(parentWorldMat, localMat);
+            } else {
+                worldMat.copy(localMat);
+            }
+
+            // Extract world transform components
+            const worldPos = new Vec3();
+            const worldRot = new Quat();
+            const worldScale = new Vec3();
+            worldMat.getTranslation(worldPos);
+            worldRot.setFromMat4(worldMat);
+            worldMat.getScale(worldScale);
+            
+            pivot.moveTRS(worldPos, worldRot, worldScale);
         };
 
         // handle a change in the UI state

@@ -8,6 +8,7 @@ import { BoundingBox } from 'playcanvas';
 class SceneObject extends Element {
     _visible: boolean = true;
     protected _entity: Entity;
+    selectedAnimation = 'none';
 
     constructor(type: ElementType) {
         super(type);

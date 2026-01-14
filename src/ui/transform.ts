@@ -137,6 +137,7 @@ class Transform extends Container {
             positionVector.value = toArray(localPos);
             rotationVector.value = toArray(v);
             scaleInput.value = localScale.x;
+            animationSelect.value = selection.selectedAnimation || 'none';
             
             uiUpdating = false;
         };
@@ -218,10 +219,26 @@ class Transform extends Container {
             input.on('slider:mouseup', mouseup);
         });
 
+        animationSelect.on('change', (value: string) => {
+            if (uiUpdating) {
+                return;
+            }
+            const selection = events.invoke('selection') as SceneObject | null;
+            if (!selection) {
+                return;
+            }
+            selection.selectedAnimation = value || 'none';
+        });
+
         // toggle ui availability based on selection
         events.on('selection.changed', (selection) => {
             positionVector.enabled = rotationVector.enabled = scaleInput.enabled = !!selection;
             animationSelect.enabled = !!selection;
+            if (selection) {
+                uiUpdating = true;
+                animationSelect.value = selection.selectedAnimation || 'none';
+                uiUpdating = false;
+            }
         });
 
         events.on('pivot.placed', (pivot: Pivot) => {

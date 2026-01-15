@@ -340,7 +340,7 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
         const animationData = (model.asset as any).__animationData;
         if (animationData) {
             const key = model.name || (model.asset as any).name || 'animation';
-            scene.animationLibrary.set(key, animationData);
+            scene.skeletalAnimationLibrary.set(key, animationData);
         }
         if (armatureData && armatureData.joints && armatureData.stdMaleRestRotations) {
             const { Armature } = await import('../armature/armature');

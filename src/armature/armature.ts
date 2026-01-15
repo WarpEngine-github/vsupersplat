@@ -69,7 +69,30 @@ export class Armature extends SceneObject {
         super.add();
         
         this.initializeInverseBindPose();
+        this.applyAnimationState();
+    }
+    
+    remove() {
+        this.clearBoneVisualization();
+        this.cleanupEventHandlers();
         
+        // Call SceneObject.remove() which handles entity removal and child tracking
+        super.remove();
+    }
+
+    setAnimationData(animationData?: AnimationData) {
+        this.animationData = animationData;
+        this.numFrames = animationData ? animationData.numFrames : 0;
+        this.cleanupEventHandlers();
+        if (this.scene) {
+            this.applyAnimationState();
+        }
+    }
+
+    private applyAnimationState() {
+        if (!this.scene) {
+            return;
+        }
         if (this.animationData && this.numFrames > 0) {
             const updateFromFrame = (frame: number) => {
                 const timelineFrameRate = this.scene.events.invoke('timeline.frameRate') as number || 30;
@@ -81,15 +104,15 @@ export class Armature extends SceneObject {
                 );
                 this.setFrame(frameIndex);
             };
-            
+
             this.timelineFrameHandle = this.scene.events.on('timeline.frame', (frame: number) => {
                 updateFromFrame(frame);
             });
-            
+
             this.timelineTimeHandle = this.scene.events.on('timeline.time', (time: number) => {
                 updateFromFrame(time);
             });
-            
+
             this.setFrame(this.getCurrentFrameIndex());
         } else {
             const worldTransforms = this.calculateBoneTransforms();
@@ -100,14 +123,6 @@ export class Armature extends SceneObject {
                 console.warn('[Armature.add] Failed to calculate initial bone transforms');
             }
         }
-    }
-    
-    remove() {
-        this.clearBoneVisualization();
-        this.cleanupEventHandlers();
-        
-        // Call SceneObject.remove() which handles entity removal and child tracking
-        super.remove();
     }
     
     calculateBindPoseTransforms(): Mat4[] | null {

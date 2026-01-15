@@ -63,7 +63,8 @@ class Scene {
     outline: Outline;
     underlay: Underlay;
     skeletonLibrary: SkeletonLibrary | null = null;
-    animationLibrary: Map<string, AnimationData> = new Map();
+    skeletalAnimationLibrary: Map<string, AnimationData> = new Map();
+    objectAnimationLibrary: Map<string, unknown> = new Map();
 
     contentRoot: Entity;
     cameraRoot: Entity;

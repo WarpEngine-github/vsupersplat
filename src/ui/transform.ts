@@ -6,6 +6,8 @@ import { localize } from './localization';
 import { Pivot } from '../transform/pivot';
 import { SceneObject } from '../core/scene-object';
 import { Splat } from '../splat/splat';
+import { Armature } from '../armature/armature';
+import type { AnimationData } from '../file/loaders/binary-gsplat';
 
 const v = new Vec3();
 
@@ -251,8 +253,81 @@ class Transform extends Container {
             if (!selection) {
                 return;
             }
-            selection.selectedAnimation = value || 'none';
+            const nextValue = value || 'none';
+            selection.selectedAnimation = nextValue;
+
+            if (selection instanceof Armature) {
+                const scene = window.scene;
+                const animationData = scene?.skeletalAnimationLibrary.get(nextValue);
+                if (nextValue === 'none' || !scene || !animationData) {
+                    selection.setAnimationData(undefined);
+                    return;
+                }
+
+                const library = scene.skeletonLibrary;
+                const filtered = filterSkeletalAnimation(animationData, library);
+                selection.setAnimationData(filtered);
+            }
         });
+
+        const filteredAnimationCache = new Map<string, AnimationData>();
+
+        const filterSkeletalAnimation = (animationData: AnimationData, library: typeof window.scene.skeletonLibrary) => {
+            const cacheKey = `${animationData.numFrames}:${animationData.numBones}`;
+            const cached = filteredAnimationCache.get(cacheKey);
+            if (cached) {
+                return cached;
+            }
+
+            if (!library?.boneNames || !library.skeleton1185Names) {
+                return animationData;
+            }
+
+            const targetBones = library.boneNames;
+            if (animationData.numBones <= targetBones.length) {
+                return animationData;
+            }
+
+            const nameTo1185 = new Map<string, number>();
+            library.skeleton1185Names.forEach((name, idx) => {
+                nameTo1185.set(name, idx);
+            });
+
+            const mapIndices: number[] = [];
+            for (const name of targetBones) {
+                const idx = nameTo1185.get(name);
+                if (idx === undefined) {
+                    console.warn('Missing bone in 1185 skeleton:', name);
+                    return animationData;
+                }
+                mapIndices.push(idx);
+            }
+
+            const numFrames = animationData.numFrames;
+            const floatsPerBone = 16;
+            const sourceBones = animationData.numBones;
+            const filteredData = new Float32Array(numFrames * targetBones.length * floatsPerBone);
+
+            for (let frame = 0; frame < numFrames; frame++) {
+                for (let i = 0; i < mapIndices.length; i++) {
+                    const sourceIdx = mapIndices[i];
+                    const srcOffset = (frame * sourceBones + sourceIdx) * floatsPerBone;
+                    const dstOffset = (frame * mapIndices.length + i) * floatsPerBone;
+                    for (let j = 0; j < floatsPerBone; j++) {
+                        filteredData[dstOffset + j] = animationData.data[srcOffset + j];
+                    }
+                }
+            }
+
+            const filtered: AnimationData = {
+                data: filteredData,
+                numFrames: numFrames,
+                numBones: mapIndices.length
+            };
+
+            filteredAnimationCache.set(cacheKey, filtered);
+            return filtered;
+        };
 
         const closeOtherSelects = (current: SelectInput) => {
             if (current !== animationSelect) {
@@ -447,13 +522,20 @@ class Transform extends Container {
             return options;
         };
 
-        const buildAnimationOptions = () => {
+        const buildAnimationOptions = (selection: SceneObject | null) => {
             const scene = window.scene;
             const options = [{ v: 'none', t: 'None' }];
 
-            const library = scene?.animationLibrary;
-            if (library) {
-                for (const key of library.keys()) {
+            if (!scene || !selection) {
+                return options;
+            }
+
+            if (selection instanceof Armature) {
+                for (const key of scene.skeletalAnimationLibrary.keys()) {
+                    options.push({ v: key, t: key });
+                }
+            } else {
+                for (const key of scene.objectAnimationLibrary.keys()) {
                     options.push({ v: key, t: key });
                 }
             }
@@ -466,8 +548,8 @@ class Transform extends Container {
             const isSplat = selection instanceof Splat;
             if (isSplat) {
                 skeletonSelect.options = buildSkeletonOptions();
-                animationSelect.options = buildAnimationOptions();
             }
+            animationSelect.options = buildAnimationOptions(selection);
             positionVector.enabled = rotationVector.enabled = scaleInput.enabled = isSelected;
             animationSelect.enabled = isSelected;
             skeletonSelect.enabled = isSplat;

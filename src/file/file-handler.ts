@@ -338,6 +338,10 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
         // Create and add Armature FIRST if joints.bin and rest rotation data are available
         const armatureData = (model.asset as any).__armatureData;
         const animationData = (model.asset as any).__animationData;
+        if (animationData) {
+            const key = model.name || (model.asset as any).name || 'animation';
+            scene.animationLibrary.set(key, animationData);
+        }
         if (armatureData && armatureData.joints && armatureData.stdMaleRestRotations) {
             const { Armature } = await import('../armature/armature');
             const armatureName = (model.name || 'Splat') + '_Armature';

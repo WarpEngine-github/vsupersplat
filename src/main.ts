@@ -32,6 +32,7 @@ import { SphereShape } from './shapes/sphere-shape';
 import { registerTransformHandlerEvents } from './transform/transform-handler';
 import { EditorUI } from './ui/editor';
 import { localizeInit } from './ui/localization';
+import { loadSkeletonLibrary } from './file/loaders/skeleton-binary';
 
 declare global {
     interface LaunchParams {
@@ -111,7 +112,7 @@ const initShortcuts = (events: Events) => {
                 // Load binary format from gs/assets/model/gs_example/converted
                 await events.invoke('import', [{
                     filename: 'header.json',
-                    url: '/gs/assets/model/gs_example/converted/header.json'
+                    url: '/gs/assets/model/gs_example/converted/pkl_header.json'
                 }]);
             } catch (error) {
                 console.error('Failed to load binary splat:', error);
@@ -280,6 +281,14 @@ const main = async () => {
     registerIframeApi(events);
     initShortcuts(events);
     initFileHandler(scene, events, editorUI.appContainer.dom);
+
+    loadSkeletonLibrary()
+        .then((library) => {
+            scene.skeletonLibrary = library;
+        })
+        .catch((error) => {
+            console.warn('Failed to load skeleton library:', error);
+        });
 
     // load async models
     scene.start();

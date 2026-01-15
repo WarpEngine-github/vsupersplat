@@ -261,9 +261,6 @@ def process_data(input_path, output_dir):
         }
     }
     
-    with open(os.path.join(output_dir, "header.json"), 'w') as f:
-        json.dump(header, f, indent=2)
-        
     print("Writing splats.bin (interleaved format)...")
     # Interleaved format: for each splat, write all its data sequentially
     # Format per splat: Pos(3f) + Scale(3f) + Rot(4f) + Color(4b) + Opacity(1f) = 48 bytes
@@ -325,9 +322,9 @@ def process_data(input_path, output_dir):
             "stride": 12  # 3 floats × 4 bytes
         }
     
-    # Write header.json with all info (skeleton, joints, etc.)
-    print("Writing header.json...")
-    with open(os.path.join(output_dir, "header.json"), 'w') as f:
+    # Write header with all info (skeleton, joints, etc.)
+    print("Writing pkl_header.json...")
+    with open(os.path.join(output_dir, "pkl_header.json"), 'w') as f:
         json.dump(header, f, indent=2)
             
     print("Done! Output saved to", output_dir)
@@ -375,7 +372,7 @@ def convert_441_skeleton(input_path, output_dir):
             "stride": 4
         }
 
-    with open(os.path.join(output_dir, "header.json"), "w") as f:
+    with open(os.path.join(output_dir, "skeleton_header.json"), "w") as f:
         json.dump(header, f, indent=2)
 
     print(f"Done! Output saved to {output_dir}")
@@ -474,7 +471,7 @@ def convert_std_male_model(input_path, output_dir):
             "stride": 12
         }
 
-    with open(os.path.join(output_dir, "header.json"), "w") as f:
+    with open(os.path.join(output_dir, "std_male_header.json"), "w") as f:
         json.dump(header, f, indent=2)
 
     print(f"Done! Output saved to {output_dir}")
@@ -489,6 +486,25 @@ def main():
     skeleton_output = model_root / '441_skeleton' / 'converted'
     std_male_input = model_root / 'std_male_model' / 'pytorch' / 'std_male.model.pt'
     std_male_output = model_root / 'std_male_model' / 'converted'
+
+    def clear_converted_folder(path: Path):
+        if not path.exists():
+            return
+        for entry in path.iterdir():
+            if entry.is_file():
+                entry.unlink()
+            elif entry.is_dir():
+                for child in entry.rglob('*'):
+                    if child.is_file():
+                        child.unlink()
+                for child in sorted(entry.rglob('*'), reverse=True):
+                    if child.is_dir():
+                        child.rmdir()
+                entry.rmdir()
+
+    clear_converted_folder(gs_example_output)
+    clear_converted_folder(skeleton_output)
+    clear_converted_folder(std_male_output)
 
     if gs_example_input.exists():
         process_data(str(gs_example_input), str(gs_example_output))

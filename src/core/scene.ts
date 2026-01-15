@@ -25,6 +25,8 @@ import { SceneState } from './scene-state';
 import { Splat } from '../splat/splat';
 import { SplatOverlay } from '../splat/splat-overlay';
 import { Underlay } from './underlay';
+import type { SkeletonLibrary } from '../file/loaders/skeleton-binary';
+import type { AnimationData } from '../file/loaders/binary-gsplat';
 
 class Scene {
     events: Events;
@@ -60,6 +62,8 @@ class Scene {
     grid: Grid;
     outline: Outline;
     underlay: Underlay;
+    skeletonLibrary: SkeletonLibrary | null = null;
+    animationLibrary: Map<string, AnimationData> = new Map();
 
     contentRoot: Entity;
     cameraRoot: Entity;

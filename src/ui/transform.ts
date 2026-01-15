@@ -5,6 +5,7 @@ import { Events } from '../events';
 import { localize } from './localization';
 import { Pivot } from '../transform/pivot';
 import { SceneObject } from '../core/scene-object';
+import { Splat } from '../splat/splat';
 
 const v = new Vec3();
 
@@ -83,6 +84,30 @@ class Transform extends Container {
         scale.append(scaleLabel);
         scale.append(scaleInput);
 
+        // skeleton
+        const skeleton = new Container({
+            class: 'transform-row'
+        });
+
+        const skeletonLabel = new Label({
+            class: 'transform-label',
+            text: 'Skeleton'
+        });
+
+        const skeletonSelect = new SelectInput({
+            class: 'transform-expand',
+            defaultValue: 'none',
+            options: [
+                { v: 'none', t: 'None' },
+                { v: 'skeleton_1', t: 'Skeleton 1' },
+                { v: 'skeleton_2', t: 'Skeleton 2' },
+                { v: 'skeleton_3', t: 'Skeleton 3' }
+            ]
+        });
+
+        skeleton.append(skeletonLabel);
+        skeleton.append(skeletonSelect);
+
         // animation
         const animation = new Container({
             class: 'transform-row'
@@ -97,10 +122,7 @@ class Transform extends Container {
             class: 'transform-expand',
             defaultValue: 'none',
             options: [
-                { v: 'none', t: 'None' },
-                { v: 'anim_1', t: 'Animation 1' },
-                { v: 'anim_2', t: 'Animation 2' },
-                { v: 'anim_3', t: 'Animation 3' }
+                { v: 'none', t: 'None' }
             ]
         });
 
@@ -110,6 +132,7 @@ class Transform extends Container {
         this.append(position);
         this.append(rotation);
         this.append(scale);
+        this.append(skeleton);
         this.append(animation);
 
         const toArray = (v: Vec3) => {
@@ -138,6 +161,7 @@ class Transform extends Container {
             rotationVector.value = toArray(v);
             scaleInput.value = localScale.x;
             animationSelect.value = selection.selectedAnimation || 'none';
+            skeletonSelect.value = selection instanceof Splat ? selection.selectedSkeleton : 'none';
             
             uiUpdating = false;
         };
@@ -230,16 +254,207 @@ class Transform extends Container {
             selection.selectedAnimation = value || 'none';
         });
 
+        const bindSkeleton = async (splat: Splat, value: string) => {
+            if (value === 'none') {
+                if (splat.linkedArmature) {
+                    const existing = splat.linkedArmature;
+                    existing.unlinkSplat(splat);
+                    if (existing.linkedSplats.size === 0) {
+                        existing.remove();
+                    }
+                }
+                return;
+            }
+
+            const scene = window.scene;
+            const library = scene?.skeletonLibrary;
+            if (!scene || !library) {
+                console.warn('No skeleton library loaded.');
+                return;
+            }
+
+            const assetArmature = (splat.asset as any).__armatureData;
+            const animationData = (splat.asset as any).__animationData;
+            if (!assetArmature || !assetArmature.weights) {
+                console.warn('No weights data on asset.');
+                return;
+            }
+
+            const stdParentsCount = library.stdMaleParents ? library.stdMaleParents.length : 0;
+            const restTransCount = library.stdMaleRestTranslations ? library.stdMaleRestTranslations.length / 3 : 0;
+            const restRotCount = library.stdMaleRestRotations ? library.stdMaleRestRotations.length / 4 : 0;
+            const namesCount = library.boneNames ? library.boneNames.length : 0;
+
+            const expected = stdParentsCount || restTransCount || restRotCount || namesCount;
+            const weightIndices: Uint16Array | undefined = assetArmature.weights?.indices;
+
+            if (!expected || !weightIndices || !library.stdMaleRestTranslations || !library.stdMaleRestRotations || !library.stdMaleParents) {
+                console.warn('Skeleton does not match splat bone data.');
+                return;
+            }
+
+            let mappedIndices = weightIndices;
+            let mappedWeights: Float32Array | undefined = assetArmature.weights?.weights;
+
+            let maxWeightIndex = 0;
+            for (let i = 0; i < weightIndices.length; i++) {
+                if (weightIndices[i] > maxWeightIndex) {
+                    maxWeightIndex = weightIndices[i];
+                }
+            }
+            if (maxWeightIndex >= expected && library.boneNames && library.skeleton1185Names) {
+                const nameTo441 = new Map<string, number>();
+                library.boneNames.forEach((name, idx) => {
+                    nameTo441.set(name, idx);
+                });
+                const map1185To441 = library.skeleton1185Names.map((name) => {
+                    const idx = nameTo441.get(name);
+                    return idx === undefined ? -1 : idx;
+                });
+
+                mappedIndices = new Uint16Array(weightIndices.length);
+                mappedWeights = new Float32Array(mappedIndices.length);
+                const sourceWeights: Float32Array | undefined = assetArmature.weights?.weights;
+                for (let splatIdx = 0; splatIdx < mappedIndices.length / 4; splatIdx++) {
+                    let sum = 0;
+                    for (let j = 0; j < 4; j++) {
+                        const idx = weightIndices[splatIdx * 4 + j];
+                        const mapped = idx < map1185To441.length ? map1185To441[idx] : -1;
+                        if (mapped >= 0) {
+                            mappedIndices[splatIdx * 4 + j] = mapped;
+                            mappedWeights[splatIdx * 4 + j] = sourceWeights ? sourceWeights[splatIdx * 4 + j] : 0;
+                            sum += mappedWeights[splatIdx * 4 + j];
+                        } else {
+                            mappedIndices[splatIdx * 4 + j] = 0;
+                            mappedWeights[splatIdx * 4 + j] = 0;
+                        }
+                    }
+                    if (sum > 0) {
+                        for (let j = 0; j < 4; j++) {
+                            mappedWeights[splatIdx * 4 + j] /= sum;
+                        }
+                    }
+                }
+            }
+
+            let hasMatch = false;
+            for (let i = 0; i < mappedIndices.length; i++) {
+                if (mappedIndices[i] < expected) {
+                    hasMatch = true;
+                    break;
+                }
+            }
+
+            if (!hasMatch) {
+                console.warn('Skeleton does not match splat bone data.');
+                return;
+            }
+
+            if (splat.linkedArmature) {
+                const existing = splat.linkedArmature;
+                existing.unlinkSplat(splat);
+                if (existing.linkedSplats.size === 0) {
+                    existing.remove();
+                }
+            }
+
+            const armatureData = {
+                numBones: expected,
+                weights: {
+                    indices: mappedIndices,
+                    weights: mappedWeights || assetArmature.weights.weights
+                },
+                joints: assetArmature.joints,
+                skeleton: library.parents,
+                stdMaleRestTranslations: library.stdMaleRestTranslations,
+                stdMaleRestRotations: library.stdMaleRestRotations,
+                stdMaleParents: library.stdMaleParents
+            };
+
+            const { Armature } = await import('../armature/armature');
+            const armatureName = `${splat.name}_Armature`;
+            const armature = new Armature(armatureName, armatureData, animationData);
+            scene.add(armature);
+            armature.linkSplat(splat);
+        };
+
+        skeletonSelect.on('change', (value: string) => {
+            if (uiUpdating) {
+                return;
+            }
+            const selection = events.invoke('selection') as SceneObject | null;
+            if (!selection || !(selection instanceof Splat)) {
+                return;
+            }
+            selection.selectedSkeleton = value || 'none';
+            void bindSkeleton(selection, value || 'none');
+        });
+
         // toggle ui availability based on selection
-        events.on('selection.changed', (selection) => {
-            positionVector.enabled = rotationVector.enabled = scaleInput.enabled = !!selection;
-            animationSelect.enabled = !!selection;
-            if (selection) {
+        const buildSkeletonOptions = () => {
+            const scene = window.scene;
+            const library = scene?.skeletonLibrary;
+            const options = [{ v: 'none', t: 'None' }];
+
+            const hasParents = !!(library?.parents && library.parents.length > 0);
+            const hasStdMale = !!(library?.stdMaleRestRotations && library.stdMaleRestRotations.length > 0);
+
+            if (hasParents && hasStdMale) {
+                options.push({ v: 'skeleton', t: 'Skeleton' });
+            } else if (hasParents) {
+                options.push({ v: 'skeleton', t: 'Skeleton (parents only)' });
+            } else if (hasStdMale) {
+                options.push({ v: 'skeleton', t: 'Skeleton (std_male only)' });
+            }
+
+            return options;
+        };
+
+        const buildAnimationOptions = () => {
+            const scene = window.scene;
+            const options = [{ v: 'none', t: 'None' }];
+
+            const library = scene?.animationLibrary;
+            if (library) {
+                for (const key of library.keys()) {
+                    options.push({ v: key, t: key });
+                }
+            }
+
+            return options;
+        };
+
+        const applySelectionState = (selection: SceneObject | null) => {
+            const isSelected = !!selection;
+            const isSplat = selection instanceof Splat;
+            if (isSplat) {
+                skeletonSelect.options = buildSkeletonOptions();
+                animationSelect.options = buildAnimationOptions();
+            }
+            positionVector.enabled = rotationVector.enabled = scaleInput.enabled = isSelected;
+            animationSelect.enabled = isSelected;
+            skeletonSelect.enabled = isSplat;
+            skeleton.hidden = !isSelected || !isSplat;
+            if (isSelected) {
                 uiUpdating = true;
                 animationSelect.value = selection.selectedAnimation || 'none';
+                const nextSkeleton = isSplat ? selection.selectedSkeleton : 'none';
+                const hasOption = skeletonSelect.options.some((opt) => opt.v === nextSkeleton);
+                skeletonSelect.value = hasOption ? nextSkeleton : 'none';
+                uiUpdating = false;
+            } else {
+                uiUpdating = true;
+                animationSelect.value = 'none';
+                skeletonSelect.value = 'none';
                 uiUpdating = false;
             }
+        };
+
+        events.on('selection.changed', (selection) => {
+            applySelectionState(selection as SceneObject | null);
         });
+
+        applySelectionState(events.invoke('selection') as SceneObject | null);
 
         events.on('pivot.placed', (pivot: Pivot) => {
             updateUI();

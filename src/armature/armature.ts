@@ -300,7 +300,7 @@ export class Armature extends SceneObject {
             this.numFrames - 1
         );
     }
-
+    
     setFrame(frameIndex: number) {
         if (frameIndex < 0 || (this.numFrames > 0 && frameIndex >= this.numFrames)) return;
         
@@ -564,6 +564,7 @@ export class Armature extends SceneObject {
         console.log('[Armature.linkSplat] Armature entity:', this._entity.name, 'has parent:', this._entity.parent?.name);
         
         this.linkedSplats.add(splat);
+        splat.linkedArmature = this;
 
         // Armature is guaranteed to be in scene before linkSplat is called
         // Remove splat from its current parent and parent to armature entity
@@ -589,6 +590,9 @@ export class Armature extends SceneObject {
     unlinkSplat(splat: Splat) {
         this.linkedSplats.delete(splat);
         this.splatBonePaletteMaps.delete(splat);
+        if (splat.linkedArmature === this) {
+            splat.linkedArmature = null;
+        }
         
         // Restore splat entity to contentRoot
         if (splat.entity.parent === this._entity) {

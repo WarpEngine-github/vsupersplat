@@ -28,6 +28,7 @@ import { vertexShader, fragmentShader, gsplatCenter } from '../shaders/splat-sha
 import { State } from './splat-state';
 import { Transform } from '../transform/transform';
 import { TransformPalette } from '../transform/transform-palette';
+import type { Armature } from '../armature/armature';
 
 const vec = new Vec3();
 const veca = new Vec3();
@@ -67,6 +68,9 @@ class Splat extends SceneObject {
     transformPalette: TransformPalette;
 
     selectionAlpha = 1;
+
+    selectedSkeleton = 'none';
+    linkedArmature: Armature | null = null;
 
     _tintClr = new Color(1, 1, 1);
     _temperature = 0;
@@ -631,15 +635,15 @@ class Splat extends SceneObject {
             worldRot.setFromMat4(worldMat);
             worldMat.getScale(worldScale);
             
-            switch (mode) {
-                case 'center':
+        switch (mode) {
+            case 'center':
                     result.set(worldPos, worldRot, worldScale);
-                    break;
-                case 'boundCenter':
+                break;
+            case 'boundCenter':
                     const boundCenter = (selection ? this.selectionBound : this.localBound).center;
                     worldMat.transformPoint(boundCenter, vec);
                     result.set(vec, worldRot, worldScale);
-                    break;
+                break;
             }
         }
     }

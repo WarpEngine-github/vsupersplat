@@ -508,9 +508,8 @@ class Splat extends SceneObject {
         if (this.localBoundDirty) {
             // Don't calculate bounds during rendering to avoid nested render passes
             if (!this.scene.isRendering) {
-            this.scene.dataProcessor.calcBound(this, localBound, false);
-            this.localBoundDirty = false;
-            this.entity.getWorldTransform().transformPoint(localBound.center, vec);
+                this.scene.dataProcessor.calcBound(this, localBound, false);
+                this.localBoundDirty = false;
             }
             // If rendering, return cached bound (may be stale, but prevents nested render pass)
         }

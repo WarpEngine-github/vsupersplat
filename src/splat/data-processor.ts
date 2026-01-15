@@ -82,7 +82,7 @@ class DataProcessor {
     copyShader: Shader;
 
     getIntersectResources: (width: number, numSplats: number) => IntersectResources;
-    getBoundResources: (splatTextureWidth: number) => BoundResources;
+    getBoundResources: (splatTextureWidth: number, hasBoneBlending?: boolean) => BoundResources;
     getPositionResources: (width: number, height: number, numSplats: number, hasBoneBlending?: boolean) => PositionResources;
 
     constructor(device: GraphicsDevice) {
@@ -171,6 +171,7 @@ class DataProcessor {
 
         this.getBoundResources = (() => {
             let shader: Shader = null;
+            let shaderWithBones: Shader = null;
             let minTexture: Texture = null;
             let maxTexture: Texture = null;
             let renderTarget: RenderTarget = null;
@@ -179,8 +180,20 @@ class DataProcessor {
             let minData: Float32Array = null;
             let maxData: Float32Array = null;
 
-            return (width: number) => {
-                if (!shader) {
+            return (width: number, hasBoneBlending: boolean = false) => {
+                if (hasBoneBlending) {
+                    if (!shaderWithBones) {
+                        const fragmentWithBones = '#define USE_BONE_BLENDING\n' + boundFS;
+                        shaderWithBones = ShaderUtils.createShader(device, {
+                            uniqueName: 'calcBoundShaderBones',
+                            attributes: {
+                                vertex_position: SEMANTIC_POSITION
+                            },
+                            vertexGLSL: boundVS,
+                            fragmentGLSL: fragmentWithBones
+                        });
+                    }
+                } else if (!shader) {
                     shader = ShaderUtils.createShader(device, {
                         uniqueName: 'calcBoundShader',
                         attributes: {
@@ -222,7 +235,7 @@ class DataProcessor {
                     maxData = new Float32Array(width * 4);
                 }
 
-                return { shader, minTexture, maxTexture, renderTarget, minRenderTarget, maxRenderTarget, minData, maxData };
+                return { shader: hasBoneBlending ? shaderWithBones : shader, minTexture, maxTexture, renderTarget, minRenderTarget, maxRenderTarget, minData, maxData };
             };
         })();
 
@@ -413,16 +426,24 @@ class DataProcessor {
         this.splatParams[2] = numSplats;
 
         // get resources
-        const resources = this.getBoundResources(transformA.width);
+        const hasBoneBlending = !!(splat.boneIndicesTexture && splat.boneWeightsTexture);
+        const resources = this.getBoundResources(transformA.width, hasBoneBlending);
 
-        resolve(scope, {
+        const uniforms: any = {
             transformA,
             splatTransform,
             transformPalette,
             splatState,
             splat_params: this.splatParams,
             mode: onlySelected ? 0 : 1
-        });
+        };
+
+        if (hasBoneBlending) {
+            uniforms.boneIndices = splat.boneIndicesTexture;
+            uniforms.boneWeights = splat.boneWeightsTexture;
+        }
+
+        resolve(scope, uniforms);
 
         const glDevice = device as WebglGraphicsDevice;
 

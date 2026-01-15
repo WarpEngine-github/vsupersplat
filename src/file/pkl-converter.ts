@@ -176,6 +176,14 @@ if 'poses' in data:
         animation_num_bones = num_bones_1185
         translations = cv_to_gl(translations)
         rotations = cv_to_gl_quat(rotations)
+        # Normalize quaternions and fix zero-norm entries
+        quat_norms = np.linalg.norm(rotations, axis=-1, keepdims=True)
+        zero_mask = quat_norms < 1e-8
+        if np.any(zero_mask):
+            rotations = rotations.copy()
+            rotations[zero_mask[..., 0]] = np.array([0.0, 0.0, 0.0, 1.0], dtype=rotations.dtype)
+            quat_norms = np.linalg.norm(rotations, axis=-1, keepdims=True)
+        rotations = rotations / np.clip(quat_norms, 1e-8, None)
         quats_flat = rotations.reshape(-1, 4)
         trans_flat = translations.reshape(-1, 3)
         r_mats = Rotation.from_quat(quats_flat).as_matrix()

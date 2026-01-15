@@ -46,6 +46,8 @@ class BoneShape extends Element {
     cylinderMaterial: ShaderMaterial | null = null;
     private _localBound: BoundingBox = new BoundingBox();
     private _worldBound: BoundingBox = new BoundingBox();
+    private _tmpScale: Vec3 = new Vec3();
+    private _tmpDelta: Vec3 = new Vec3();
 
     constructor() {
         super(ElementType.debug);
@@ -90,6 +92,7 @@ class BoneShape extends Element {
         midpoint.add2(config.startPosition, config.endPosition);
         midpoint.mulScalar(0.5);
         entity.setLocalPosition(midpoint);
+        this.updateCylinderProxyScale(entity, config.startPosition, config.endPosition, config.radius);
 
         const material = new ShaderMaterial({
             uniqueName: `cylinderShape_${config.name}`,
@@ -263,6 +266,7 @@ class BoneShape extends Element {
             midpoint.add2(position, jointPos);
             midpoint.mulScalar(0.5);
             this.cylinder.setLocalPosition(midpoint);
+            this.updateCylinderProxyScale(this.cylinder, position, jointPos, this._radius * 0.8);
             
             // Update shader parameters with world positions
             const parentWorldPos = new Vec3();
@@ -312,6 +316,7 @@ class BoneShape extends Element {
                     midpoint.add2(parentPos, position);
                     midpoint.mulScalar(0.5);
                     this.cylinder.setLocalPosition(midpoint);
+                    this.updateCylinderProxyScale(this.cylinder, parentPos, position, this._radius * 0.8);
                     
                     // Update shader parameters with world positions
                     const parentWorldPos = new Vec3();
@@ -337,6 +342,16 @@ class BoneShape extends Element {
         }
         
         this.updateBound();
+    }
+
+    private updateCylinderProxyScale(entity: Entity, startPos: Vec3, endPos: Vec3, radius: number) {
+        this._tmpDelta.sub2(endPos, startPos);
+        this._tmpScale.set(
+            Math.max(Math.abs(this._tmpDelta.x) + radius * 2, 0.0001),
+            Math.max(Math.abs(this._tmpDelta.y) + radius * 2, 0.0001),
+            Math.max(Math.abs(this._tmpDelta.z) + radius * 2, 0.0001)
+        );
+        entity.setLocalScale(this._tmpScale);
     }
 
     getJointPosition(): Vec3 | null {

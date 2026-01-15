@@ -364,7 +364,7 @@ class Splat extends SceneObject {
         this.updateState();
 
         // Note: Animation is now handled by Armature, not Splat
-        // Armature is created separately in file-handler.ts when loading binary gsplat files
+        // Armature is created separately in file-handler.ts when loading pkl-converted data
     }
 
     remove() {

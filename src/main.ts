@@ -290,6 +290,17 @@ const main = async () => {
         }]);
     }
 
+    if (loadList.length === 0) {
+        try {
+            await events.invoke('import', [{
+                filename: 'gs_example.pkl',
+                url: '/gs/assets/model/gs_example/pytorch/gs_example.pkl'
+            }]);
+        } catch (error) {
+            console.warn('Failed to auto-load gs_example.pkl:', error);
+        }
+    }
+
 
     // handle OS-based file association in PWA mode
     if ('launchQueue' in window) {

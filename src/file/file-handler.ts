@@ -137,11 +137,6 @@ const isLcc = (filenames: string[]) => {
     return count('.lcc') === 1;
 };
 
-// Binary format contains header.json and splats.bin
-const isBinaryGsplat = (filenames: string[]) => {
-    return filenames.some(f => f === 'header.json' || f.endsWith('header.json'));
-};
-
 const isPkl = (filenames: string[]) => {
     return filenames.length === 1 && filenames[0].endsWith('.pkl');
 };
@@ -311,7 +306,7 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
 
         const urls = files.map(file => (file.contents && URL.createObjectURL(file.contents)) ?? file.url ?? file.filename);
 
-        // Create mapFile function to find associated .bin files
+        // Create mapFile function to find associated in-memory .bin files
         const mapFile = (name: string): AssetSource | null => {
             const lowerName = name.toLowerCase();
             const idx = files.findIndex(f => f.filename.toLowerCase() === lowerName || f.filename.toLowerCase().endsWith(lowerName));
@@ -363,11 +358,20 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
 
     const importPkl = async (file: ImportFile, animationFrame: boolean) => {
         try {
-            if (!file.contents) {
-                throw new Error('Missing pkl file contents');
+            let pklFile = file.contents;
+            if (!pklFile) {
+                if (!file.url) {
+                    throw new Error('Missing pkl file contents');
+                }
+                const response = await fetch(file.url);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch pkl: ${response.statusText}`);
+                }
+                const blob = await response.blob();
+                pklFile = new File([blob], file.filename, { type: blob.type || 'application/octet-stream' });
             }
 
-            const converted = await convertPklToBinary(file.contents);
+            const converted = await convertPklToBinary(pklFile);
 
             if (!converted.header) {
                 throw new Error('Failed to generate header from pkl conversion');

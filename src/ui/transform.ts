@@ -254,6 +254,43 @@ class Transform extends Container {
             selection.selectedAnimation = value || 'none';
         });
 
+        const closeOtherSelects = (current: SelectInput) => {
+            if (current !== animationSelect) {
+                animationSelect.close();
+            }
+            if (current !== skeletonSelect) {
+                skeletonSelect.close();
+            }
+        };
+
+        const attachSelectClose = (select: SelectInput) => {
+            select.on('click', () => closeOtherSelects(select));
+            select.on('focus', () => closeOtherSelects(select));
+        };
+
+        attachSelectClose(animationSelect);
+        attachSelectClose(skeletonSelect);
+
+        const closeAllSelects = () => {
+            animationSelect.close();
+            skeletonSelect.close();
+        };
+
+        const onDocumentPointerDown = (event: PointerEvent) => {
+            const target = event.target as Node | null;
+            if (!target) {
+                closeAllSelects();
+                return;
+            }
+            const inAnimation = animationSelect.dom.contains(target);
+            const inSkeleton = skeletonSelect.dom.contains(target);
+            if (!inAnimation && !inSkeleton) {
+                closeAllSelects();
+            }
+        };
+
+        document.addEventListener('pointerdown', onDocumentPointerDown, true);
+
         const bindSkeleton = async (splat: Splat, value: string) => {
             if (value === 'none') {
                 if (splat.linkedArmature) {
@@ -373,7 +410,7 @@ class Transform extends Container {
 
             const { Armature } = await import('../armature/armature');
             const armatureName = `${splat.name}_Armature`;
-            const armature = new Armature(armatureName, armatureData, animationData);
+            const armature = new Armature(armatureName, armatureData);
             scene.add(armature);
             armature.linkSplat(splat);
         };

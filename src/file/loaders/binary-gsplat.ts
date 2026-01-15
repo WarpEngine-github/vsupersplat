@@ -317,7 +317,7 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
     }
     
     // Load animation data if available (independent of armature)
-    if (false && header.animation && header.animation.numFrames > 0 && header.animation.numBones > 0) {
+    if (header.animation && header.animation.numFrames > 0 && header.animation.numBones > 0) {
         const animationInfo = header.animation;
         try {
             // Load animation.bin (16 floats × numBones × numFrames)

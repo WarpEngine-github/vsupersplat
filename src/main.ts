@@ -102,24 +102,6 @@ const initShortcuts = (events: Events) => {
     shortcuts.register(['Z', 'z'], { event: 'edit.redo', ctrl: true, shift: true, capture: true });
     shortcuts.register(['M', 'm'], { event: 'camera.toggleMode' });
     shortcuts.register([' '], { event: 'camera.toggleOverlay' });
-    shortcuts.register(['K', 'k'], {
-        ctrl: true,
-        func: async () => {
-            const scene = window.scene;
-            if (!scene) return;
-
-            try {
-                // Load binary format from gs/assets/model/gs_example/converted
-                await events.invoke('import', [{
-                    filename: 'header.json',
-                    url: '/gs/assets/model/gs_example/converted/pkl_header.json'
-                }]);
-            } catch (error) {
-                console.error('Failed to load binary splat:', error);
-            }
-        }
-    });
-
     return shortcuts;
 };
 

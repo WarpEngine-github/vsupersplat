@@ -436,12 +436,6 @@ export class Armature extends SceneObject {
             return;
         }
         
-        const { weights } = this.armatureData;
-        if (!weights || !weights.indices || !weights.weights) {
-            console.warn('[Armature.updateSplats] No weights data available');
-            return;
-        }
-        
         // Convert world-space transforms to armature-local space
         // Since splats are children of the armature entity, they inherit the armature's transform
         // So bone transforms need to be in local space relative to the armature
@@ -461,6 +455,10 @@ export class Armature extends SceneObject {
         }
         
         for (const splat of this.linkedSplats) {
+            if (!splat.splatWeights || !splat.splatWeights.indices || !splat.splatWeights.weights) {
+                console.warn('[Armature.updateSplats] No weights data available for splat', splat.name);
+                continue;
+            }
             let bonePaletteMap = this.splatBonePaletteMaps.get(splat);
             if (!bonePaletteMap) {
                 bonePaletteMap = this.initializeSplatBoneMapping(splat);
@@ -480,7 +478,7 @@ export class Armature extends SceneObject {
     }
     
     private initializeSplatBoneMapping(splat: Splat): Map<number, number> {
-        const { weights } = this.armatureData;
+        const weights = splat.splatWeights;
         if (!weights || !weights.indices || !weights.weights) {
             throw new Error('Cannot initialize splat bone mapping: no weights data');
         }

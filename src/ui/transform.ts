@@ -387,9 +387,10 @@ class Transform extends Container {
 
             const assetArmature = (splat.asset as any).__armatureData;
             const animationData = (splat.asset as any).__animationData;
-            if (!assetArmature || !assetArmature.weights) {
-                console.warn('No weights data on asset.');
-                return;
+            const assetWeights = (splat.asset as any).__splatWeights;
+            if (!assetArmature || !assetWeights?.indices || !assetWeights?.weights) {
+                splat.splatWeights = undefined;
+                throw new Error('Splat has no weights data; cannot bind skeleton.');
             }
 
             const stdParentsCount = library.stdMaleParents ? library.stdMaleParents.length : 0;
@@ -398,7 +399,7 @@ class Transform extends Container {
             const namesCount = library.boneNames ? library.boneNames.length : 0;
 
             const expected = stdParentsCount || restTransCount || restRotCount || namesCount;
-            const weightIndices: Uint16Array | undefined = assetArmature.weights?.indices;
+            const weightIndices: Uint16Array | undefined = assetWeights?.indices;
 
             if (!expected || !weightIndices || !library.stdMaleRestTranslations || !library.stdMaleRestRotations || !library.stdMaleParents) {
                 console.warn('Skeleton does not match splat bone data.');
@@ -406,7 +407,7 @@ class Transform extends Container {
             }
 
             let mappedIndices = weightIndices;
-            let mappedWeights: Float32Array | undefined = assetArmature.weights?.weights;
+            let mappedWeights: Float32Array | undefined = assetWeights?.weights;
 
             let maxWeightIndex = 0;
             for (let i = 0; i < weightIndices.length; i++) {
@@ -426,7 +427,7 @@ class Transform extends Container {
 
                 mappedIndices = new Uint16Array(weightIndices.length);
                 mappedWeights = new Float32Array(mappedIndices.length);
-                const sourceWeights: Float32Array | undefined = assetArmature.weights?.weights;
+                const sourceWeights: Float32Array | undefined = assetWeights?.weights;
                 for (let splatIdx = 0; splatIdx < mappedIndices.length / 4; splatIdx++) {
                     let sum = 0;
                     for (let j = 0; j < 4; j++) {
@@ -470,12 +471,13 @@ class Transform extends Container {
                 }
             }
 
+            splat.splatWeights = {
+                indices: mappedIndices,
+                weights: mappedWeights || assetWeights.weights
+            };
+
             const armatureData = {
                 numBones: expected,
-                weights: {
-                    indices: mappedIndices,
-                    weights: mappedWeights || assetArmature.weights.weights
-                },
                 joints: assetArmature.joints,
                 skeleton: library.parents,
                 stdMaleRestTranslations: library.stdMaleRestTranslations,
@@ -499,7 +501,9 @@ class Transform extends Container {
                 return;
             }
             selection.selectedSkeleton = value || 'none';
-            void bindSkeleton(selection, value || 'none');
+            void bindSkeleton(selection, value || 'none').catch((error) => {
+                console.error(error);
+            });
         });
 
         // toggle ui availability based on selection

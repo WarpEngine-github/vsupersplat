@@ -142,12 +142,23 @@ class RemapUnpickler(pickle.Unpickler):
 with open(input_path, 'rb') as f:
     data = RemapUnpickler(f).load()
 
+if os.path.exists(output_dir):
+    for entry in os.listdir(output_dir):
+        try:
+            os.remove(os.path.join(output_dir, entry))
+        except Exception:
+            pass
+
 means = to_np(data['mu'])
 covs = to_np(data['cov'])
 colors = to_np(data['color'])
 opacities = to_np(data['opacity'])
 
 joints = None
+weights = None
+if 'W' in data:
+    weights = to_np(data['W'])
+
 if 'joints' in data:
     joints = to_np(data['joints'])
 
@@ -185,6 +196,9 @@ means = means[opacity_mask]
 covs = covs[opacity_mask]
 colors = colors[opacity_mask]
 opacities = opacities[opacity_mask]
+
+if weights is not None:
+    weights = weights[opacity_mask]
 
 if joints is not None:
     joints = joints
@@ -230,7 +244,9 @@ else:
 colors = np.hstack([color_rgb, alpha_channel])
 
 num_bones_header = 0
-if joints is not None:
+if weights is not None and weights.ndim == 2:
+    num_bones_header = int(weights.shape[1])
+elif joints is not None:
     num_bones_header = int(joints.shape[0])
 elif poses is not None and len(poses.shape) > 1:
     num_bones_header = int(poses.shape[1])
@@ -275,6 +291,17 @@ with open(os.path.join(output_dir, "splats.bin"), 'wb') as f:
         f.write(rotations[i].astype(np.float32).tobytes())
         f.write(colors[i].astype(np.uint8).tobytes())
         f.write(np.array([opacities[i]], dtype=np.float32).tobytes())
+
+if weights is not None and weights.ndim == 2:
+    top_indices = np.argsort(weights, axis=1)[:, -4:]
+    top_weights = np.take_along_axis(weights, top_indices, axis=1)
+    weight_sums = top_weights.sum(axis=1, keepdims=True)
+    top_weights = top_weights / (weight_sums + 1e-8)
+
+    with open(os.path.join(output_dir, "weights.bin"), 'wb') as f:
+        for i in range(weights.shape[0]):
+            f.write(top_indices[i].astype(np.uint16).tobytes())
+            f.write(top_weights[i].astype(np.float32).tobytes())
 
 if poses is not None:
     with open(os.path.join(output_dir, "animation.bin"), 'wb') as f:

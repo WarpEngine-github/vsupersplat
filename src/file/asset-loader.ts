@@ -59,6 +59,11 @@ class AssetLoader {
                 if (binaryResult.armatureData) {
                     (asset as any).__armatureData = binaryResult.armatureData;
                 }
+                if (binaryResult.splatWeights) {
+                    (asset as any).__splatWeights = binaryResult.splatWeights;
+                } else {
+                    delete (asset as any).__splatWeights;
+                }
                 if (binaryResult.animationData) {
                     (asset as any).__animationData = binaryResult.animationData;
                 }

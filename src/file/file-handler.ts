@@ -355,7 +355,7 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
             armature.linkSplat(model);
         } else {
             // No armature, just add splat normally
-            scene.add(model);
+        scene.add(model);
         }
 
         return model;
@@ -445,9 +445,6 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
         } else if (isSog(filenames)) {
             // import unbundled sog model
             result.push(await importSog(files, animationFrame));
-        } else if (isBinaryGsplat(filenames)) {
-            // import binary format (header.json + splats.bin)
-            result.push(await importBinaryGsplat(files, animationFrame));
         } else if (isLcc(filenames)) {
             // import lcc files
             result.push(await importLcc(files, animationFrame));

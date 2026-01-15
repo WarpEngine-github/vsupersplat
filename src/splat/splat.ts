@@ -71,6 +71,7 @@ class Splat extends SceneObject {
 
     selectedSkeleton = 'none';
     linkedArmature: Armature | null = null;
+    splatWeights?: { indices: Uint16Array; weights: Float32Array };
 
     _tintClr = new Color(1, 1, 1);
     _temperature = 0;
@@ -96,6 +97,14 @@ class Splat extends SceneObject {
         this.asset = asset;
         this.splatData = splatData as GSplatData;
         this.numSplats = splatData.numSplats;
+
+        const assetWeights = (asset as any).__splatWeights;
+        if (assetWeights?.indices && assetWeights?.weights) {
+            this.splatWeights = {
+                indices: assetWeights.indices,
+                weights: assetWeights.weights
+            };
+        }
 
         this._entity = new Entity('splatEntitiy');
         this._entity.setEulerAngles(orientation);

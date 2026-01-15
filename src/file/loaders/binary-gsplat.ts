@@ -32,16 +32,17 @@ interface AssetHeader {
  * Armature data structure (skeleton, weights, joints - everything except animation frames)
  */
 interface ArmatureData {
-    weights: {
-        indices: Uint16Array;  // 4 bone indices per splat
-        weights: Float32Array;  // 4 bone weights per splat
-    };
     numBones: number;  // Number of bones in the skeleton
     joints?: Float32Array;      // Joint positions (numJoints × 3 floats) - absolute world positions
     skeleton?: Int32Array;      // Bone hierarchy: parent indices (numBones × int32), -1 for root
     stdMaleRestTranslations?: Float32Array;  // Standard male A-pose joint positions (numBones × 3 floats)
     stdMaleRestRotations?: Float32Array;    // Standard male A-pose joint rotations (numBones × 4 floats, quaternions)
     stdMaleParents?: Int32Array;            // Standard male bone hierarchy (numBones × int32), -1 for root
+}
+
+interface SplatWeights {
+    indices: Uint16Array;
+    weights: Float32Array;
 }
 
 /**
@@ -61,6 +62,7 @@ interface BinaryGsplatResult {
     armatureData?: ArmatureData;
     animationData?: AnimationData;
     header: AssetHeader;
+    splatWeights?: SplatWeights;
 }
 
 /**
@@ -75,94 +77,46 @@ interface BinaryGsplatResult {
  */
 const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatResult> => {
     // Helper to get base path from URL or filename
-    const getBasePath = () => {
-        // Prefer filename over URL for path extraction (more reliable)
-        if (assetSource.filename) {
-            const lastSlash = assetSource.filename.lastIndexOf('/');
-            if (lastSlash >= 0) {
-                return assetSource.filename.substring(0, lastSlash);
-            }
-            // If filename has no path, try to extract from URL
-        }
-        if (assetSource.url) {
-            // Skip blob URLs (object URLs) - they don't have meaningful paths
-            if (assetSource.url.startsWith('blob:')) {
-                // For blob URLs, use filename if available, otherwise default
-                return assetSource.filename ? 
-                    assetSource.filename.substring(0, assetSource.filename.lastIndexOf('/')) || '/gs/assets/model/gs_example/converted' :
-                    '/gs/assets/model/gs_example/converted';
-            }
-            // Remove filename from URL to get directory
-            try {
-                const url = new URL(assetSource.url, window.location.href);
-                const pathname = url.pathname;
-                const lastSlash = pathname.lastIndexOf('/');
-                if (lastSlash >= 0) {
-                    return pathname.substring(0, lastSlash);
-                }
-            } catch (e) {
-                // If URL parsing fails, fall through to default
-            }
-        }
-        return '/gs/assets/model/gs_example/converted';
-    };
-
-    const basePath = getBasePath();
-    
-    // Helper to fetch files
-    const fetchFile = async (filename: string): Promise<ArrayBuffer> => {
-        // Check if we have a mapFile function (for drag-drop scenarios)
+    // Helper to load files strictly from in-memory sources (no URL fetch)
+    const fetchFile = async (filename: string, required = true): Promise<ArrayBuffer> => {
         if (assetSource.mapFile) {
             const fileSource = assetSource.mapFile(filename);
             if (fileSource) {
                 const source = await createReadSource(fileSource);
                 return await source.arrayBuffer();
             }
-            // If mapFile doesn't find it, try URL fallback
         }
-        
-        // Fetch from URL (either provided URL or constructed from basePath)
-        let url: string;
-        if (assetSource.url && filename === 'header.json') {
-            // Use the provided URL directly for header.json
-            url = assetSource.url;
-        } else {
-            // Construct absolute URL from basePath to ensure proper resolution
-            const fullPath = `${basePath}/${filename}`;
-            url = new URL(fullPath, window.location.href).href;
+
+        if (filename === 'header.json' && assetSource.contents) {
+            const source = await createReadSource(assetSource);
+            return await source.arrayBuffer();
         }
-        
-        console.log(`[loadBinaryGsplat] Fetching ${filename}:`, {
-            basePath,
-            fullPath: `${basePath}/${filename}`,
-            url,
-            assetSourceUrl: assetSource.url,
-            assetSourceFilename: assetSource.filename,
-            hasMapFile: !!assetSource.mapFile
-        });
-        
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`Failed to load ${filename}: ${response.statusText} (tried: ${url})`);
+
+        if (required) {
+            throw new Error(`Missing required file ${filename}`);
         }
-        const buffer = await response.arrayBuffer();
-        if (buffer.byteLength === 0) {
-            throw new Error(`File ${filename} is empty (0 bytes) - file may not exist (tried: ${url})`);
+        throw new Error(`Optional file ${filename} missing`);
+    };
+
+    const fetchFileOptional = async (filename: string): Promise<ArrayBuffer | null> => {
+        try {
+            return await fetchFile(filename, false);
+        } catch (error) {
+            return null;
         }
-        return buffer;
     };
 
     // Step 1: Load header.json
-    const headerBuffer = await fetchFile('header.json');
+    const headerBuffer = await fetchFile('header.json', true);
     const headerText = new TextDecoder().decode(headerBuffer);
     const header: AssetHeader = JSON.parse(headerText);
     
     const numSplats = header.numSplats;
-    console.log(`Loading binary splat: ${numSplats} splats from ${basePath}`);
+    console.log(`Loading binary splat: ${numSplats} splats`);
 
     // Step 2: Load splats.bin
     console.log('[loadBinaryGsplat] About to fetch splats.bin...');
-    const splatsBuffer = await fetchFile('splats.bin');
+    const splatsBuffer = await fetchFile('splats.bin', true);
     console.log('[loadBinaryGsplat] Successfully loaded splats.bin, size:', splatsBuffer.byteLength);
     const SPLAT_STRIDE = 48; // bytes per splat
     
@@ -272,7 +226,10 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
     let numBonesFromWeights: number | undefined;
     
     try {
-            const weightsBuffer = await fetchFile('weights.bin');
+        const weightsBuffer = await fetchFileOptional('weights.bin');
+        if (!weightsBuffer) {
+            // No weights provided; continue without weights
+        } else {
             const WEIGHT_STRIDE = 24; // bytes per splat
             
             if (weightsBuffer.byteLength !== numSplats * WEIGHT_STRIDE) {
@@ -310,7 +267,8 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
             numBonesFromWeights = maxIndex + 1;
         }
         
-        weightsLoaded = true;
+            weightsLoaded = true;
+        }
     } catch (error) {
         console.warn('Failed to load weights.bin:', error);
         // Continue without weights
@@ -321,7 +279,11 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
         const animationInfo = header.animation;
         try {
             // Load animation.bin (16 floats × numBones × numFrames)
-            const animationBuffer = await fetchFile('animation.bin');
+            const animationBuffer = await fetchFileOptional('animation.bin');
+            if (!animationBuffer) {
+                // No animation provided; skip
+                throw new Error('animation.bin not provided');
+            }
             const FLOATS_PER_BONE = 16; // 4×4 matrix
             let numBones = animationInfo.numBones;
             const expectedSize = animationInfo.numFrames * numBones * FLOATS_PER_BONE * 4; // 4 bytes per float
@@ -347,26 +309,14 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
 
             console.log(`Loaded animation: ${animationInfo.numFrames} frames, ${numBones} bones`);
         } catch (error) {
-            console.warn('Failed to load animation data:', error);
+            if ((error as Error).message !== 'animation.bin not provided') {
+                console.warn('Failed to load animation data:', error);
+            }
             // Continue without animation
         }
     }
     
     // Initialize armatureData if we have weights (independent of animation)
-    if (weightsLoaded && !armatureData && boneIndices && boneWeights) {
-        // Determine numBones: from animation if available, otherwise from weights
-        const numBones = animationData ? animationData.numBones : (numBonesFromWeights || 0);
-        if (numBones > 0) {
-            armatureData = {
-                weights: {
-                    indices: boneIndices,
-                    weights: boneWeights
-                },
-                numBones: numBones
-            };
-        }
-    }
-    
     // Load armature data (joints, skeleton, std_male) independently of animation
             const headerWithJoints = header as AssetHeader & { 
                 joints?: { count: number; file: string; format: string; stride: number };
@@ -386,13 +336,6 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
         
         if (numBones > 0) {
             armatureData = {
-                weights: weightsLoaded && boneIndices && boneWeights ? {
-                    indices: boneIndices,
-                    weights: boneWeights
-                } : {
-                    indices: new Uint16Array(numSplats * 4),
-                    weights: new Float32Array(numSplats * 4)
-                },
                 numBones: numBones
             };
         }
@@ -401,7 +344,10 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
     // Load joints.bin if available
     if (headerWithJoints.joints && armatureData) {
                 try {
-                    const jointsBuffer = await fetchFile('joints.bin');
+                    const jointsBuffer = await fetchFileOptional('joints.bin');
+                    if (!jointsBuffer) {
+                        throw new Error('joints.bin not provided');
+                    }
                     const FLOATS_PER_JOINT = 3; // x, y, z
                     const jointsInfo = headerWithJoints.joints;
                     const expectedJointsSize = jointsInfo.count * FLOATS_PER_JOINT * 4; // 4 bytes per float
@@ -414,7 +360,9 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
                         console.warn(`Joints buffer size mismatch! Expected ${expectedJointsSize}, got ${jointsBuffer.byteLength}`);
                     }
                 } catch (error) {
-                    console.warn('Failed to load joints data:', error);
+                    if ((error as Error).message !== 'joints.bin not provided') {
+                        console.warn('Failed to load joints data:', error);
+                    }
                     // Continue without joints
                 }
             }
@@ -422,7 +370,10 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
             // Load skeleton.bin if available (bone hierarchy: parent indices)
     if (headerWithJoints.skeleton && armatureData) {
                 try {
-                    const skeletonBuffer = await fetchFile('skeleton.bin');
+                    const skeletonBuffer = await fetchFileOptional('skeleton.bin');
+                    if (!skeletonBuffer) {
+                        throw new Error('skeleton.bin not provided');
+                    }
                     const skeletonInfo = headerWithJoints.skeleton;
                     const expectedSkeletonSize = skeletonInfo.count * 4; // 4 bytes per int32
                     
@@ -434,7 +385,9 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
                         console.warn(`Skeleton buffer size mismatch! Expected ${expectedSkeletonSize}, got ${skeletonBuffer.byteLength}`);
                     }
                 } catch (error) {
-                    console.warn('Failed to load skeleton data:', error);
+                    if ((error as Error).message !== 'skeleton.bin not provided') {
+                        console.warn('Failed to load skeleton data:', error);
+                    }
                     // Continue without skeleton
                 }
     }
@@ -452,7 +405,10 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
         // Load rest translations
         if (headerWithStdMale.stdMaleModel.restTranslations) {
             try {
-                const stdMaleBuffer = await fetchFile(headerWithStdMale.stdMaleModel.restTranslations.file);
+                const stdMaleBuffer = await fetchFileOptional(headerWithStdMale.stdMaleModel.restTranslations.file);
+                if (!stdMaleBuffer) {
+                    throw new Error(`${headerWithStdMale.stdMaleModel.restTranslations.file} not provided`);
+                }
                 const stdMaleInfo = headerWithStdMale.stdMaleModel.restTranslations;
                 const expectedStdMaleSize = stdMaleInfo.count * 3 * 4; // count × 3 floats × 4 bytes
                 
@@ -464,14 +420,19 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
                     console.warn(`Std male translations buffer size mismatch! Expected ${expectedStdMaleSize}, got ${stdMaleBuffer.byteLength}`);
                 }
             } catch (error) {
-                console.warn('Failed to load std_male rest translations:', error);
+                if ((error as Error).message !== `${headerWithStdMale.stdMaleModel.restTranslations.file} not provided`) {
+                    console.warn('Failed to load std_male rest translations:', error);
+                }
             }
         }
         
         // Load rest rotations
         if (headerWithStdMale.stdMaleModel.restRotations) {
             try {
-                const stdMaleBuffer = await fetchFile(headerWithStdMale.stdMaleModel.restRotations.file);
+                const stdMaleBuffer = await fetchFileOptional(headerWithStdMale.stdMaleModel.restRotations.file);
+                if (!stdMaleBuffer) {
+                    throw new Error(`${headerWithStdMale.stdMaleModel.restRotations.file} not provided`);
+                }
                 const stdMaleInfo = headerWithStdMale.stdMaleModel.restRotations;
                 const expectedStdMaleSize = stdMaleInfo.count * 4 * 4; // count × 4 floats × 4 bytes
                 
@@ -483,14 +444,19 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
                     console.warn(`Std male rotations buffer size mismatch! Expected ${expectedStdMaleSize}, got ${stdMaleBuffer.byteLength}`);
                 }
             } catch (error) {
-                console.warn('Failed to load std_male rest rotations:', error);
+                if ((error as Error).message !== `${headerWithStdMale.stdMaleModel.restRotations.file} not provided`) {
+                    console.warn('Failed to load std_male rest rotations:', error);
+                }
             }
         }
         
         // Load parents (bone hierarchy)
         if (headerWithStdMale.stdMaleModel.parents) {
             try {
-                const stdMaleBuffer = await fetchFile(headerWithStdMale.stdMaleModel.parents.file);
+                const stdMaleBuffer = await fetchFileOptional(headerWithStdMale.stdMaleModel.parents.file);
+                if (!stdMaleBuffer) {
+                    throw new Error(`${headerWithStdMale.stdMaleModel.parents.file} not provided`);
+                }
                 const stdMaleInfo = headerWithStdMale.stdMaleModel.parents;
                 const expectedStdMaleSize = stdMaleInfo.count * 4; // count × 4 bytes (int32)
                 
@@ -501,8 +467,10 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
                 } else {
                     console.warn(`Std male parents buffer size mismatch! Expected ${expectedStdMaleSize}, got ${stdMaleBuffer.byteLength}`);
             }
-        } catch (error) {
-                console.warn('Failed to load std_male parents:', error);
+            } catch (error) {
+                if ((error as Error).message !== `${headerWithStdMale.stdMaleModel.parents.file} not provided`) {
+                    console.warn('Failed to load std_male parents:', error);
+                }
             }
         }
     }
@@ -513,7 +481,8 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
         gsplatData,
         armatureData,
         animationData,
-        header
+        header,
+        splatWeights: boneIndices && boneWeights ? { indices: boneIndices, weights: boneWeights } : undefined
     };
 };
 

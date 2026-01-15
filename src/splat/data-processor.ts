@@ -264,15 +264,15 @@ class DataProcessor {
                         });
                     }
                 } else {
-                    if (!shader) {
-                        shader = ShaderUtils.createShader(device, {
-                            uniqueName: 'calcPositionShader',
-                            attributes: {
-                                vertex_position: SEMANTIC_POSITION
-                            },
-                            vertexGLSL: positionVS,
-                            fragmentGLSL: positionFS
-                        });
+                if (!shader) {
+                    shader = ShaderUtils.createShader(device, {
+                        uniqueName: 'calcPositionShader',
+                        attributes: {
+                            vertex_position: SEMANTIC_POSITION
+                        },
+                        vertexGLSL: positionVS,
+                        fragmentGLSL: positionFS
+                    });
                     }
                 }
 

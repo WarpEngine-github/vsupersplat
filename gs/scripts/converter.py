@@ -75,8 +75,8 @@ def process_data(input_path, output_dir):
         if isinstance(x, torch.Tensor):
             return x.detach().cpu().numpy()
         return np.array(x)
-
-    input_dir = os.path.dirname(input_path)
+    
+        input_dir = os.path.dirname(input_path)
     
     # Auto-detect std_male.model.pt if available
     std_male_model_path = None
@@ -114,7 +114,7 @@ def process_data(input_path, output_dir):
             print(f"  Warning: Failed to load std_male.model.pt: {e}")
             import traceback
             traceback.print_exc()
-    
+
     means = to_np(data['mu'])
     covs = to_np(data['cov'])
     colors = to_np(data['color'])
@@ -260,7 +260,7 @@ def process_data(input_path, output_dir):
             "max": means.max(axis=0).tolist()
         }
     }
-    
+        
     print("Writing splats.bin (interleaved format)...")
     # Interleaved format: for each splat, write all its data sequentially
     # Format per splat: Pos(3f) + Scale(3f) + Rot(4f) + Color(4b) + Opacity(1f) = 48 bytes

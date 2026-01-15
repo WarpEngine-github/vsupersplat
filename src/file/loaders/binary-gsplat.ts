@@ -302,7 +302,7 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
             const animationArray = new Float32Array(animationBuffer);
 
             animationData = {
-                data: animationArray,
+                    data: animationArray,
                 numFrames: animationInfo.numFrames,
                 numBones: numBones
             };
@@ -361,7 +361,7 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
                     }
                 } catch (error) {
                     if ((error as Error).message !== 'joints.bin not provided') {
-                        console.warn('Failed to load joints data:', error);
+                    console.warn('Failed to load joints data:', error);
                     }
                     // Continue without joints
                 }
@@ -386,7 +386,7 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
                     }
                 } catch (error) {
                     if ((error as Error).message !== 'skeleton.bin not provided') {
-                        console.warn('Failed to load skeleton data:', error);
+                    console.warn('Failed to load skeleton data:', error);
                     }
                     // Continue without skeleton
                 }
@@ -467,7 +467,7 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
                 } else {
                     console.warn(`Std male parents buffer size mismatch! Expected ${expectedStdMaleSize}, got ${stdMaleBuffer.byteLength}`);
             }
-            } catch (error) {
+        } catch (error) {
                 if ((error as Error).message !== `${headerWithStdMale.stdMaleModel.parents.file} not provided`) {
                     console.warn('Failed to load std_male parents:', error);
                 }

@@ -363,45 +363,10 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
                 throw new Error('Missing pkl file contents');
             }
 
-            const baseUrl = '/gs/assets/model/gs_example/converted';
-            const skeletonHeaderResponse = await fetch('/gs/assets/model/441_skeleton/converted/header.json');
-            if (!skeletonHeaderResponse.ok) {
-                throw new Error(`Failed to fetch 441 skeleton header (${skeletonHeaderResponse.status})`);
-            }
-            const skeletonHeader = await skeletonHeaderResponse.json();
-            const boneNames441 = Array.isArray(skeletonHeader.boneNames) ? skeletonHeader.boneNames : null;
-
-            const skeleton1185Response = await fetch('/gs/assets/1185-skeleton/1185-skeleton.json');
-            const skeleton1185Names = skeleton1185Response.ok ? await skeleton1185Response.json() : null;
-
-            const converted = await convertPklToBinary(file.contents, boneNames441, skeleton1185Names);
+            const converted = await convertPklToBinary(file.contents);
 
             if (!converted.header) {
                 throw new Error('Failed to generate header from pkl conversion');
-            }
-
-            const stdMaleHeaderResponse = await fetch(`${baseUrl}/header.json`);
-            if (!stdMaleHeaderResponse.ok) {
-                throw new Error(`Failed to fetch std_male header (${stdMaleHeaderResponse.status})`);
-            }
-            const stdMaleHeader = await stdMaleHeaderResponse.json();
-
-            const parentsResponse = await fetch('/gs/assets/model/441_skeleton/converted/parents.bin');
-            if (!parentsResponse.ok) {
-                throw new Error(`Failed to fetch skeleton parents (${parentsResponse.status})`);
-            }
-            const parentsBuffer = await parentsResponse.arrayBuffer();
-            const skeletonCount = parentsBuffer.byteLength / 4;
-
-            converted.header.skeleton = {
-                count: skeletonCount,
-                file: 'skeleton.bin',
-                format: 'int32',
-                stride: 4
-            };
-
-            if (stdMaleHeader.stdMaleModel) {
-                converted.header.stdMaleModel = stdMaleHeader.stdMaleModel;
             }
 
             const headerBlob = new Blob([JSON.stringify(converted.header)], { type: 'application/json' });
@@ -416,8 +381,6 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
                 const normalized = new Uint8Array(data);
                 importFiles.push({ filename, contents: new File([normalized], filename) });
             }
-
-            importFiles.push({ filename: 'skeleton.bin', contents: new File([parentsBuffer], 'skeleton.bin') });
 
             return await importBinaryGsplat(importFiles, animationFrame);
         } catch (error) {

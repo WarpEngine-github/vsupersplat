@@ -71,6 +71,14 @@ sys.modules.setdefault('numpy.core.multiarray', numpy.core.multiarray)
 sys.modules.setdefault('numpy.core.umath', numpy.core.umath)
 if hasattr(numpy.core, '_multiarray_umath'):
     sys.modules.setdefault('numpy.core._multiarray_umath', numpy.core._multiarray_umath)
+if 'numpy._core' not in sys.modules:
+    core_alias = types.ModuleType('numpy._core')
+    core_alias.__dict__.update(numpy.core.__dict__)
+    sys.modules['numpy._core'] = core_alias
+sys.modules.setdefault('numpy._core.multiarray', numpy.core.multiarray)
+sys.modules.setdefault('numpy._core.umath', numpy.core.umath)
+if hasattr(numpy.core, '_multiarray_umath'):
+    sys.modules.setdefault('numpy._core._multiarray_umath', numpy.core._multiarray_umath)
 
 def to_np(x):
     if isinstance(x, np.ndarray):
@@ -111,28 +119,23 @@ def cv_to_gl_quat(quats):
         quats[:, :, 2] = -quats[:, :, 2]
     return quats
 
-bone_mapping_indices = None
-if bone_names_441 is not None and skeleton_1185_names is not None:
-    name_to_index_1185 = {name: idx for idx, name in enumerate(skeleton_1185_names)}
-    bone_indices = []
-    missing = []
-    for bone_name in bone_names_441:
-        if bone_name in name_to_index_1185:
-            bone_indices.append(name_to_index_1185[bone_name])
-        else:
-            missing.append(bone_name)
-    if len(missing) == 0 and len(bone_indices) == len(bone_names_441):
-        bone_mapping_indices = np.array(bone_indices, dtype=np.int32)
-
 class RemapUnpickler(pickle.Unpickler):
     def find_class(self, module, name):
         if module == 'numpy.core':
             return getattr(np.core, name)
+        if module == 'numpy._core':
+            return getattr(np.core, name)
         if module == 'numpy.core.multiarray':
+            return getattr(np.core.multiarray, name)
+        if module == 'numpy._core.multiarray':
             return getattr(np.core.multiarray, name)
         if module == 'numpy.core.umath':
             return getattr(np.core.umath, name)
+        if module == 'numpy._core.umath':
+            return getattr(np.core.umath, name)
         if module == 'numpy.core._multiarray_umath' and hasattr(np.core, '_multiarray_umath'):
+            return getattr(np.core._multiarray_umath, name)
+        if module == 'numpy._core._multiarray_umath' and hasattr(np.core, '_multiarray_umath'):
             return getattr(np.core._multiarray_umath, name)
         return super().find_class(module, name)
 
@@ -143,7 +146,6 @@ means = to_np(data['mu'])
 covs = to_np(data['cov'])
 colors = to_np(data['color'])
 opacities = to_np(data['opacity'])
-weights = to_np(data['W'])
 
 joints = None
 if 'joints' in data:
@@ -160,12 +162,7 @@ if 'poses' in data:
         translations = to_np(raw_poses['translations'])
         num_frames = rotations.shape[0]
         num_bones_1185 = rotations.shape[1]
-        if bone_mapping_indices is not None and len(bone_mapping_indices) == len(bone_names_441):
-            rotations = rotations[:, bone_mapping_indices, :]
-            translations = translations[:, bone_mapping_indices, :]
-            animation_num_bones = len(bone_names_441)
-        else:
-            animation_num_bones = num_bones_1185
+        animation_num_bones = num_bones_1185
         translations = cv_to_gl(translations)
         rotations = cv_to_gl_quat(rotations)
         quats_flat = rotations.reshape(-1, 4)
@@ -188,7 +185,6 @@ means = means[opacity_mask]
 covs = covs[opacity_mask]
 colors = colors[opacity_mask]
 opacities = opacities[opacity_mask]
-weights = weights[opacity_mask]
 
 if joints is not None:
     joints = joints
@@ -204,25 +200,46 @@ v[dets < 0, :, 0] *= -1
 rotations = Rotation.from_matrix(v).as_quat()
 rotations = cv_to_gl_quat(rotations)
 
-if colors.max() <= 1.0:
-    colors = (colors * 255).astype(np.uint8)
+SH_C0 = 0.28209479177387814
+color_rgb = colors[:, :3]
+color_min = float(color_rgb.min()) if color_rgb.size > 0 else 0.0
+color_max = float(color_rgb.max()) if color_rgb.size > 0 else 0.0
+
+if color_min < 0.0:
+    # Treat as SH DC coefficients
+    color_rgb = color_rgb * SH_C0 + 0.5
+    color_rgb = np.clip(color_rgb, 0.0, 1.0)
+    color_rgb = (color_rgb * 255).astype(np.uint8)
+elif color_max <= 1.0:
+    color_rgb = (color_rgb * 255).astype(np.uint8)
 else:
-    colors = colors.astype(np.uint8)
+    color_rgb = color_rgb.astype(np.uint8)
 
-if colors.shape[1] == 3:
+alpha_channel = None
+if colors.shape[1] >= 4:
+    alpha = colors[:, 3]
+    alpha_max = float(alpha.max()) if alpha.size > 0 else 1.0
+    if alpha_max <= 1.0:
+        alpha_channel = (alpha * 255).astype(np.uint8)
+    else:
+        alpha_channel = alpha.astype(np.uint8)
+    alpha_channel = alpha_channel.reshape(-1, 1)
+else:
     alpha_channel = np.full((means.shape[0], 1), 255, dtype=np.uint8)
-    colors = np.hstack([colors, alpha_channel])
 
-top_indices = np.argsort(weights, axis=1)[:, -4:]
-top_weights = np.take_along_axis(weights, top_indices, axis=1)
-weight_sums = top_weights.sum(axis=1, keepdims=True)
-top_weights = top_weights / (weight_sums + 1e-8)
+colors = np.hstack([color_rgb, alpha_channel])
+
+num_bones_header = 0
+if joints is not None:
+    num_bones_header = int(joints.shape[0])
+elif poses is not None and len(poses.shape) > 1:
+    num_bones_header = int(poses.shape[1])
 
 os.makedirs(output_dir, exist_ok=True)
 
 header = {
     "numSplats": int(means.shape[0]),
-    "numBones": int(weights.shape[1]),
+    "numBones": int(num_bones_header),
     "bounds": {
         "min": means.min(axis=0).tolist(),
         "max": means.max(axis=0).tolist()
@@ -259,11 +276,6 @@ with open(os.path.join(output_dir, "splats.bin"), 'wb') as f:
         f.write(colors[i].astype(np.uint8).tobytes())
         f.write(np.array([opacities[i]], dtype=np.float32).tobytes())
 
-with open(os.path.join(output_dir, "weights.bin"), 'wb') as f:
-    for i in range(means.shape[0]):
-        f.write(top_indices[i].astype(np.uint16).tobytes())
-        f.write(top_weights[i].astype(np.float32).tobytes())
-
 if poses is not None:
     with open(os.path.join(output_dir, "animation.bin"), 'wb') as f:
         f.write(poses.astype(np.float32).tobytes())
@@ -274,9 +286,7 @@ if joints is not None:
 `;
 
 export const convertPklToBinary = async (
-    file: File,
-    boneNames441: string[] | null,
-    skeleton1185Names: string[] | null
+    file: File
 ): Promise<PklConversionResult> => {
     const pyodide = await loadPyodideRuntime();
     const buffer = await file.arrayBuffer();
@@ -286,9 +296,6 @@ export const convertPklToBinary = async (
     pyodide.FS.writeFile(inputPath, new Uint8Array(buffer));
     pyodide.globals.set('input_path', inputPath);
     pyodide.globals.set('output_dir', outputDir);
-    pyodide.globals.set('bone_names_441', boneNames441);
-    pyodide.globals.set('skeleton_1185_names', skeleton1185Names);
-
     await pyodide.runPythonAsync(getConverterCode());
 
     const entries = pyodide.FS.readdir(outputDir).filter((name) => !name.startsWith('.'));

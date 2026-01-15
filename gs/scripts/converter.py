@@ -1,7 +1,6 @@
 import os
 import json
 import struct
-import argparse
 import pickle
 import torch
 import numpy as np
@@ -19,68 +18,6 @@ def decompose_covariance(cov_matrix):
     except Exception as e:
         print(f"Error decomposing covariance: {e}")
         return np.array([0.01, 0.01, 0.01]), np.array([0, 0, 0, 1])
-
-def load_1185_skeleton(input_dir):
-    """Load 1185-skeleton.json which contains all 1185 bone names"""
-    # Try multiple possible locations
-    possible_paths = [
-        str(Path(__file__).resolve().parents[1] / 'assets' / '1185-skeleton' / '1185-skeleton.json'),
-        os.path.join(input_dir, '1185-skeleton.json'),
-        os.path.join(input_dir, '..', '1185-skeleton.json'),  # One level up
-        os.path.join(input_dir, '..', 'assets', '1185-skeleton.json'),  # In assets folder
-        os.path.join(input_dir, '..', 'assets', '1185-skeleton', '1185-skeleton.json'),  # assets/1185-skeleton
-    ]
-
-    # Walk up the directory tree to find gs/assets/1185-skeleton.json
-    try:
-        current = Path(input_dir).resolve()
-        for parent in current.parents:
-            candidate = parent / 'assets' / '1185-skeleton.json'
-            possible_paths.append(str(candidate))
-    except Exception:
-        pass
-    
-    for skeleton_1185_path in possible_paths:
-        if os.path.exists(skeleton_1185_path):
-            with open(skeleton_1185_path, 'r') as f:
-                return json.load(f)
-    
-    return None
-
-def create_bone_mapping(bone_names_441, skeleton_1185_names):
-    """
-    Create mapping from 441 bone names to their indices in the 1185 skeleton.
-    Returns: numpy array of indices (length 441) indicating which bones from 1185 to keep
-    """
-    if skeleton_1185_names is None:
-        return None
-    
-    # Create a mapping from bone name to index in 1185 skeleton
-    name_to_index_1185 = {name: idx for idx, name in enumerate(skeleton_1185_names)}
-    
-    # Map each 441 bone name to its index in 1185
-    bone_indices = []
-    missing_bones = []
-    
-    for bone_name in bone_names_441:
-        if bone_name in name_to_index_1185:
-            bone_indices.append(name_to_index_1185[bone_name])
-        else:
-            missing_bones.append(bone_name)
-            # If bone not found, we'll skip it (or use -1 as placeholder)
-            bone_indices.append(-1)
-    
-    if missing_bones:
-        print(f"  Warning: {len(missing_bones)} bones from skeleton.pt not found in 1185-skeleton.json:")
-        print(f"    First 10 missing: {missing_bones[:10]}")
-    
-    # Filter out any -1 indices (bones not found)
-    valid_indices = [idx for idx in bone_indices if idx != -1]
-    if len(valid_indices) != len(bone_indices):
-        print(f"  Warning: Only {len(valid_indices)}/{len(bone_indices)} bones could be mapped")
-        return None
-    
-    return np.array(bone_indices, dtype=np.int32)
 
 def cv_to_gl(coords):
     """
@@ -126,7 +63,7 @@ def cv_to_gl_quat(quats):
         quats[:, :, 2] = -quats[:, :, 2]  # Negate Z
     return quats
 
-def process_data(input_path, output_dir, skeleton_path=None):
+def process_data(input_path, output_dir):
     print(f"Loading {input_path}...")
     
     with open(input_path, 'rb') as f:
@@ -140,88 +77,6 @@ def process_data(input_path, output_dir, skeleton_path=None):
         return np.array(x)
 
     input_dir = os.path.dirname(input_path)
-    
-    # Auto-detect skeleton.pt if not provided
-    if skeleton_path is None:
-        for name in ['skeleton.pt', '441-skeleton.pt']:
-            candidate = os.path.join(input_dir, name)
-            if os.path.exists(candidate):
-                skeleton_path = candidate
-                break
-        if skeleton_path is None:
-            # Try model/441_skeleton/pytorch/441-skeleton.pt relative to input
-            try:
-                current = Path(input_dir).resolve()
-                model_root = None
-                for parent in current.parents:
-                    if parent.name == 'model':
-                        model_root = parent
-                        break
-                if model_root:
-                    candidate = model_root / '441_skeleton' / 'pytorch' / '441-skeleton.pt'
-                    if candidate.exists():
-                        skeleton_path = str(candidate)
-            except Exception:
-                pass
-    
-    # Load 1185-skeleton.json for bone name mapping
-    skeleton_1185_names = load_1185_skeleton(input_dir)
-    if skeleton_1185_names:
-        print(f"  Loaded 1185-skeleton.json: {len(skeleton_1185_names)} bone names")
-    else:
-        print(f"  Warning: 1185-skeleton.json not found, cannot filter animation bones")
-    
-    # Load skeleton data if available
-    skeleton_data = None
-    bone_names = None
-    parents = None
-    bone_mapping_indices = None  # Mapping from 441 bones to 1185 bone indices
-    
-    if skeleton_path and os.path.exists(skeleton_path):
-        print(f"\nLoading skeleton from {skeleton_path}...")
-        try:
-            skeleton_data = torch.load(skeleton_path, map_location='cpu')
-            print(f"Skeleton type: {type(skeleton_data)}")
-            
-            if isinstance(skeleton_data, dict):
-                bone_names = skeleton_data.get('joint_names', skeleton_data.get('bone_names', skeleton_data.get('names')))
-                parents = skeleton_data.get('parents', skeleton_data.get('parent'))
-                
-                if bone_names is not None:
-                    bone_names = to_np(bone_names) if isinstance(bone_names, torch.Tensor) else list(bone_names)
-                    print(f"  Found {len(bone_names)} bone names")
-                    
-                    # Create mapping from 441 bones to 1185 skeleton indices
-                    if skeleton_1185_names:
-                        bone_mapping_indices = create_bone_mapping(bone_names, skeleton_1185_names)
-                        if bone_mapping_indices is not None:
-                            print(f"  Created bone mapping: 441 bones mapped to 1185 skeleton indices")
-                        else:
-                            print(f"  Warning: Failed to create bone mapping")
-                
-                if parents is not None:
-                    parents = to_np(parents) if isinstance(parents, torch.Tensor) else np.array(parents)
-                    print(f"  Found parents array: shape {parents.shape}")
-                    print(f"  Root bones (parent=-1): {np.sum(parents == -1)}")
-            else:
-                # Try to get attributes
-                if hasattr(skeleton_data, 'joint_names'):
-                    bone_names = to_np(skeleton_data.joint_names) if isinstance(skeleton_data.joint_names, torch.Tensor) else list(skeleton_data.joint_names)
-                    print(f"  Found {len(bone_names)} bone names (from attributes)")
-                    
-                    # Create mapping from 441 bones to 1185 skeleton indices
-                    if skeleton_1185_names:
-                        bone_mapping_indices = create_bone_mapping(bone_names, skeleton_1185_names)
-                        if bone_mapping_indices is not None:
-                            print(f"  Created bone mapping: 441 bones mapped to 1185 skeleton indices")
-                        else:
-                            print(f"  Warning: Failed to create bone mapping")
-                if hasattr(skeleton_data, 'parents'):
-                    parents = to_np(skeleton_data.parents) if isinstance(skeleton_data.parents, torch.Tensor) else np.array(skeleton_data.parents)
-        except Exception as e:
-            print(f"  Warning: Failed to load skeleton: {e}")
-            import traceback
-            traceback.print_exc()
     
     # Auto-detect std_male.model.pt if available
     std_male_model_path = None
@@ -260,111 +115,6 @@ def process_data(input_path, output_dir, skeleton_path=None):
             import traceback
             traceback.print_exc()
     
-    # ============================================
-    # Temporarily export pickle data for inspection
-    # ============================================
-    print("\nExporting pickle data summary...")
-    pickle_summary = {}
-    
-    def summarize_array(arr, max_items=5):
-        """Create a summary of an array"""
-        arr_np = to_np(arr)
-        summary = {
-            "shape": list(arr_np.shape),
-            "dtype": str(arr_np.dtype),
-            "min": float(arr_np.min()) if arr_np.size > 0 else None,
-            "max": float(arr_np.max()) if arr_np.size > 0 else None,
-            "mean": float(arr_np.mean()) if arr_np.size > 0 else None,
-        }
-        # Add sample values for small arrays
-        if arr_np.size <= max_items:
-            if arr_np.ndim <= 2:
-                summary["sample"] = arr_np.tolist()
-        elif arr_np.ndim == 1:
-            summary["sample_first"] = arr_np[:max_items].tolist()
-            summary["sample_last"] = arr_np[-max_items:].tolist()
-        elif arr_np.ndim == 2:
-            summary["sample_first_row"] = arr_np[0, :max_items].tolist() if arr_np.shape[0] > 0 else None
-        return summary
-    
-    for key, value in data.items():
-        try:
-            if isinstance(value, (torch.Tensor, np.ndarray)):
-                summary = summarize_array(value)
-                # Add bone count analysis for relevant arrays
-                arr_np = to_np(value)
-                if key == 'W' and len(arr_np.shape) == 2:
-                    summary["num_bones"] = arr_np.shape[1]
-                    summary["note"] = f"Weights matrix: {arr_np.shape[0]} splats × {arr_np.shape[1]} bones"
-                elif key == 'joints' and len(arr_np.shape) == 2:
-                    summary["num_joints"] = arr_np.shape[0]
-                    summary["note"] = f"Joint positions: {arr_np.shape[0]} joints × {arr_np.shape[1]} coordinates"
-                pickle_summary[key] = summary
-            elif isinstance(value, dict):
-                nested_summary = {
-                    "type": "dict",
-                    "keys": list(value.keys()),
-                    "note": "Nested dictionary"
-                }
-                # Analyze poses dict specifically
-                if key == 'poses':
-                    if 'rotations' in value:
-                        rot_np = to_np(value['rotations'])
-                        nested_summary["rotations_shape"] = list(rot_np.shape)
-                        nested_summary["num_frames"] = rot_np.shape[0] if len(rot_np.shape) > 0 else None
-                        nested_summary["num_bones_in_animation"] = rot_np.shape[1] if len(rot_np.shape) > 1 else None
-                    if 'translations' in value:
-                        trans_np = to_np(value['translations'])
-                        nested_summary["translations_shape"] = list(trans_np.shape)
-                        nested_summary["num_bones_in_animation_trans"] = trans_np.shape[1] if len(trans_np.shape) > 1 else None
-                    # Compare with weights bone count
-                    if 'W' in data:
-                        weights_np = to_np(data['W'])
-                        nested_summary["num_bones_for_skinning"] = weights_np.shape[1] if len(weights_np.shape) > 1 else None
-                        if nested_summary.get("num_bones_in_animation") and nested_summary.get("num_bones_for_skinning"):
-                            diff = nested_summary["num_bones_in_animation"] - nested_summary["num_bones_for_skinning"]
-                            nested_summary["bone_count_difference"] = diff
-                            nested_summary["note"] = f"Animation has {nested_summary['num_bones_in_animation']} bones, but weights reference {nested_summary['num_bones_for_skinning']} bones (difference: {diff})"
-                pickle_summary[key] = nested_summary
-            else:
-                pickle_summary[key] = {
-                    "type": type(value).__name__,
-                    "value": str(value)[:200] if len(str(value)) <= 200 else str(value)[:200] + "..."
-                }
-        except Exception as e:
-            pickle_summary[key] = {
-                "type": type(value).__name__,
-                "error": str(e)
-            }
-    
-    # Add overall bone count comparison
-    if 'W' in data and 'poses' in data:
-        weights_np = to_np(data['W'])
-        num_bones_weights = weights_np.shape[1] if len(weights_np.shape) > 1 else None
-        
-        poses_data = data['poses']
-        if hasattr(poses_data, 'item') and hasattr(poses_data, 'ndim') and poses_data.ndim == 0:
-            poses_data = poses_data.item()
-        
-        if isinstance(poses_data, dict) and 'rotations' in poses_data:
-            rot_np = to_np(poses_data['rotations'])
-            num_bones_animation = rot_np.shape[1] if len(rot_np.shape) > 1 else None
-            
-            pickle_summary["_bone_count_analysis"] = {
-                "weights_bones": num_bones_weights,
-                "animation_bones": num_bones_animation,
-                "joints_bones": pickle_summary.get('joints', {}).get('num_joints') if 'joints' in pickle_summary else None,
-                "match": num_bones_weights == num_bones_animation if (num_bones_weights and num_bones_animation) else None,
-                "note": "Comparison of bone counts across different data sources"
-            }
-    
-    # Save summary to JSON
-    os.makedirs(output_dir, exist_ok=True)
-    summary_path = os.path.join(output_dir, "pickle_summary.json")
-    with open(summary_path, 'w') as f:
-        json.dump(pickle_summary, f, indent=2)
-    print(f"  Saved pickle data summary to {summary_path}")
-
     means = to_np(data['mu'])
     covs = to_np(data['cov'])
     colors = to_np(data['color'])
@@ -427,23 +177,8 @@ def process_data(input_path, output_dir, skeleton_path=None):
             num_frames = rotations.shape[0]
             num_bones_1185 = rotations.shape[1]
             
-            # Filter animation data from 1185 bones to 441 bones if mapping exists
-            if bone_mapping_indices is not None and len(bone_mapping_indices) == 441:
-                print(f"Filtering animation from {num_bones_1185} bones to 441 bones using bone mapping...")
-                # Filter rotations: (F, 1185, 4) -> (F, 441, 4)
-                # Select only the bones at the indices specified in bone_mapping_indices
-                # [:, bone_mapping_indices, :] means: all frames, selected bones, all quaternion components
-                rotations = rotations[:, bone_mapping_indices, :]
-                # Filter translations: (F, 1185, 3) -> (F, 441, 3)
-                # [:, bone_mapping_indices, :] means: all frames, selected bones, all translation components
-                translations = translations[:, bone_mapping_indices, :]
-                num_bones = 441
-                animation_num_bones = 441
-                print(f"  Filtered animation: {rotations.shape[0]} frames, {rotations.shape[1]} bones")
-            else:
-                print(f"  Warning: No bone mapping available, keeping all {num_bones_1185} bones")
-                num_bones = num_bones_1185
-                animation_num_bones = num_bones_1185
+            num_bones = num_bones_1185
+            animation_num_bones = num_bones_1185
             
             # Convert translations and rotations from OpenCV to OpenGL coordinates
             translations = cv_to_gl(translations)
@@ -526,26 +261,6 @@ def process_data(input_path, output_dir, skeleton_path=None):
         }
     }
     
-    # Add skeleton info to header if available
-    if bone_names is not None:
-        header["boneNames"] = bone_names if isinstance(bone_names, list) else bone_names.tolist()
-    
-    if parents is not None:
-        # Write parents to a binary file
-        print("Writing skeleton.bin (bone hierarchy)...")
-        with open(os.path.join(output_dir, "skeleton.bin"), 'wb') as f:
-            # Format: 441 bones × 1 int32 (parent index) = 4 bytes per bone
-            parents_int32 = parents.astype(np.int32)
-            f.write(parents_int32.tobytes())
-        print(f"  Exported {len(parents)} parent indices")
-        
-        header["skeleton"] = {
-            "count": len(parents),
-            "file": "skeleton.bin",
-            "format": "int32",
-            "stride": 4  # 1 int32 × 4 bytes
-        }
-    
     with open(os.path.join(output_dir, "header.json"), 'w') as f:
         json.dump(header, f, indent=2)
         
@@ -610,126 +325,6 @@ def process_data(input_path, output_dir, skeleton_path=None):
             "stride": 12  # 3 floats × 4 bytes
         }
     
-    # Write std_male.model.pt skeleton data if available
-    if std_male_model_data is not None:
-        print("Exporting std_male.model.pt skeleton data...")
-        try:
-            if isinstance(std_male_model_data, dict) and 'joints' in std_male_model_data:
-                joints_data = std_male_model_data['joints']
-                
-                # Export rest_translations (joint positions for A-pose)
-                if 'rest_translations' in joints_data:
-                    rest_translations = to_np(joints_data['rest_translations'])
-                    # Convert from OpenCV to OpenGL coordinates
-                    rest_translations = cv_to_gl(rest_translations)
-                    print(f"  Writing std_male_rest_translations.bin: {rest_translations.shape}")
-                    with open(os.path.join(output_dir, "std_male_rest_translations.bin"), 'wb') as f:
-                        f.write(rest_translations.astype(np.float32).tobytes())
-                    
-                    header["stdMaleModel"] = header.get("stdMaleModel", {})
-                    header["stdMaleModel"]["restTranslations"] = {
-                        "file": "std_male_rest_translations.bin",
-                        "format": "float32",
-                        "shape": list(rest_translations.shape),
-                        "count": int(rest_translations.shape[0]),
-                        "stride": 12  # 3 floats × 4 bytes
-                    }
-                
-                # Export rest_rotations (joint rotations for A-pose)
-                if 'rest_rotations' in joints_data:
-                    rest_rotations = to_np(joints_data['rest_rotations'])
-                    # Convert from OpenCV to OpenGL coordinates
-                    rest_rotations = cv_to_gl_quat(rest_rotations)
-                    print(f"  Writing std_male_rest_rotations.bin: {rest_rotations.shape}")
-                    with open(os.path.join(output_dir, "std_male_rest_rotations.bin"), 'wb') as f:
-                        f.write(rest_rotations.astype(np.float32).tobytes())
-                    
-                    header["stdMaleModel"] = header.get("stdMaleModel", {})
-                    header["stdMaleModel"]["restRotations"] = {
-                        "file": "std_male_rest_rotations.bin",
-                        "format": "float32",
-                        "shape": list(rest_rotations.shape),
-                        "count": int(rest_rotations.shape[0]),
-                        "stride": 16  # 4 floats × 4 bytes (quaternion)
-                    }
-                
-                # Export parents (bone hierarchy)
-                if 'parents' in joints_data:
-                    parents_std = to_np(joints_data['parents'])
-                    print(f"  Writing std_male_parents.bin: {parents_std.shape}")
-                    with open(os.path.join(output_dir, "std_male_parents.bin"), 'wb') as f:
-                        f.write(parents_std.astype(np.int32).tobytes())
-                    
-                    header["stdMaleModel"] = header.get("stdMaleModel", {})
-                    header["stdMaleModel"]["parents"] = {
-                        "file": "std_male_parents.bin",
-                        "format": "int32",
-                        "count": int(parents_std.shape[0]),
-                        "stride": 4  # 1 int32 × 4 bytes
-                    }
-                
-                # Export comp_translations if available
-                if 'comp_translations' in joints_data:
-                    comp_translations = to_np(joints_data['comp_translations'])
-                    # Convert from OpenCV to OpenGL coordinates
-                    comp_translations = cv_to_gl(comp_translations)
-                    print(f"  Writing std_male_comp_translations.bin: {comp_translations.shape}")
-                    with open(os.path.join(output_dir, "std_male_comp_translations.bin"), 'wb') as f:
-                        f.write(comp_translations.astype(np.float32).tobytes())
-                    
-                    header["stdMaleModel"] = header.get("stdMaleModel", {})
-                    header["stdMaleModel"]["compTranslations"] = {
-                        "file": "std_male_comp_translations.bin",
-                        "format": "float32",
-                        "shape": list(comp_translations.shape),
-                        "count": int(comp_translations.shape[0]),
-                        "stride": 12  # 3 floats × 4 bytes
-                    }
-                
-                # Export comp_rotations if available
-                if 'comp_rotations' in joints_data:
-                    comp_rotations = to_np(joints_data['comp_rotations'])
-                    # Convert from OpenCV to OpenGL coordinates
-                    comp_rotations = cv_to_gl_quat(comp_rotations)
-                    print(f"  Writing std_male_comp_rotations.bin: {comp_rotations.shape}")
-                    with open(os.path.join(output_dir, "std_male_comp_rotations.bin"), 'wb') as f:
-                        f.write(comp_rotations.astype(np.float32).tobytes())
-                    
-                    header["stdMaleModel"] = header.get("stdMaleModel", {})
-                    header["stdMaleModel"]["compRotations"] = {
-                        "file": "std_male_comp_rotations.bin",
-                        "format": "float32",
-                        "shape": list(comp_rotations.shape),
-                        "count": int(comp_rotations.shape[0]),
-                        "stride": 16  # 4 floats × 4 bytes (quaternion)
-                    }
-                
-                # Export mesh vertices if available
-                if 'verts' in std_male_model_data:
-                    verts = to_np(std_male_model_data['verts'])
-                    # Convert from OpenCV to OpenGL coordinates
-                    verts = cv_to_gl(verts)
-                    print(f"  Writing std_male_verts.bin: {verts.shape}")
-                    with open(os.path.join(output_dir, "std_male_verts.bin"), 'wb') as f:
-                        f.write(verts.astype(np.float32).tobytes())
-                    
-                    header["stdMaleModel"] = header.get("stdMaleModel", {})
-                    header["stdMaleModel"]["verts"] = {
-                        "file": "std_male_verts.bin",
-                        "format": "float32",
-                        "shape": list(verts.shape),
-                        "count": int(verts.shape[0]),
-                        "stride": 12  # 3 floats × 4 bytes
-                    }
-                
-                print(f"  Successfully exported std_male.model.pt skeleton data")
-            else:
-                print(f"  Warning: std_male.model.pt does not contain 'joints' dictionary")
-        except Exception as e:
-            print(f"  Warning: Failed to export std_male.model.pt: {e}")
-            import traceback
-            traceback.print_exc()
-    
     # Write header.json with all info (skeleton, joints, etc.)
     print("Writing header.json...")
     with open(os.path.join(output_dir, "header.json"), 'w') as f:
@@ -737,12 +332,171 @@ def process_data(input_path, output_dir, skeleton_path=None):
             
     print("Done! Output saved to", output_dir)
 
+def convert_441_skeleton(input_path, output_dir):
+    if not os.path.exists(input_path):
+        print(f"Missing 441-skeleton.pt: {input_path}")
+        return
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    skeleton_data = torch.load(str(input_path), map_location='cpu')
+    bone_names = None
+    parents = None
+
+    def to_np_local(x):
+        if isinstance(x, torch.Tensor):
+            return x.detach().cpu().numpy()
+        return np.array(x)
+
+    if isinstance(skeleton_data, dict):
+        bone_names = skeleton_data.get('joint_names', skeleton_data.get('bone_names', skeleton_data.get('names')))
+        parents = skeleton_data.get('parents', skeleton_data.get('parent'))
+    else:
+        if hasattr(skeleton_data, 'joint_names'):
+            bone_names = skeleton_data.joint_names
+        if hasattr(skeleton_data, 'parents'):
+            parents = skeleton_data.parents
+
+    header = {}
+
+    if bone_names is not None:
+        bone_names = to_np_local(bone_names) if isinstance(bone_names, torch.Tensor) else list(bone_names)
+        header["boneNames"] = bone_names if isinstance(bone_names, list) else bone_names.tolist()
+
+    if parents is not None:
+        parents = to_np_local(parents) if isinstance(parents, torch.Tensor) else np.array(parents)
+        parents_int32 = parents.astype(np.int32)
+        with open(os.path.join(output_dir, "parents.bin"), "wb") as f:
+            f.write(parents_int32.tobytes())
+        header["parents"] = {
+            "file": "parents.bin",
+            "format": "int32",
+            "count": int(parents_int32.shape[0]),
+            "stride": 4
+        }
+
+    with open(os.path.join(output_dir, "header.json"), "w") as f:
+        json.dump(header, f, indent=2)
+
+    print(f"Done! Output saved to {output_dir}")
+
+def convert_std_male_model(input_path, output_dir):
+    if not os.path.exists(input_path):
+        print(f"Missing std_male.model.pt: {input_path}")
+        return
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    std_male_model_data = torch.load(str(input_path), map_location='cpu')
+    header = {"stdMaleModel": {}}
+
+    def to_np_local(x):
+        if isinstance(x, torch.Tensor):
+            return x.detach().cpu().numpy()
+        return np.array(x)
+
+    if isinstance(std_male_model_data, dict) and 'joints' in std_male_model_data:
+        joints_data = std_male_model_data['joints']
+
+        if 'rest_translations' in joints_data:
+            rest_trans = to_np_local(joints_data['rest_translations'])
+            rest_trans = cv_to_gl(rest_trans)
+            with open(os.path.join(output_dir, "std_male_rest_translations.bin"), "wb") as f:
+                f.write(rest_trans.astype(np.float32).tobytes())
+            header["stdMaleModel"]["restTranslations"] = {
+                "file": "std_male_rest_translations.bin",
+                "format": "float32",
+                "shape": list(rest_trans.shape),
+                "count": int(rest_trans.shape[0]),
+                "stride": 12
+            }
+
+        if 'rest_rotations' in joints_data:
+            rest_rots = to_np_local(joints_data['rest_rotations'])
+            rest_rots = cv_to_gl_quat(rest_rots)
+            with open(os.path.join(output_dir, "std_male_rest_rotations.bin"), "wb") as f:
+                f.write(rest_rots.astype(np.float32).tobytes())
+            header["stdMaleModel"]["restRotations"] = {
+                "file": "std_male_rest_rotations.bin",
+                "format": "float32",
+                "shape": list(rest_rots.shape),
+                "count": int(rest_rots.shape[0]),
+                "stride": 16
+            }
+
+        if 'parents' in joints_data:
+            parents_std = to_np_local(joints_data['parents']).astype(np.int32)
+            with open(os.path.join(output_dir, "std_male_parents.bin"), "wb") as f:
+                f.write(parents_std.tobytes())
+            header["stdMaleModel"]["parents"] = {
+                "file": "std_male_parents.bin",
+                "format": "int32",
+                "count": int(parents_std.shape[0]),
+                "stride": 4
+            }
+
+        if 'comp_translations' in joints_data:
+            comp_trans = to_np_local(joints_data['comp_translations'])
+            comp_trans = cv_to_gl(comp_trans)
+            with open(os.path.join(output_dir, "std_male_comp_translations.bin"), "wb") as f:
+                f.write(comp_trans.astype(np.float32).tobytes())
+            header["stdMaleModel"]["compTranslations"] = {
+                "file": "std_male_comp_translations.bin",
+                "format": "float32",
+                "shape": list(comp_trans.shape),
+                "count": int(comp_trans.shape[0]),
+                "stride": 12
+            }
+
+        if 'comp_rotations' in joints_data:
+            comp_rots = to_np_local(joints_data['comp_rotations'])
+            comp_rots = cv_to_gl_quat(comp_rots)
+            with open(os.path.join(output_dir, "std_male_comp_rotations.bin"), "wb") as f:
+                f.write(comp_rots.astype(np.float32).tobytes())
+            header["stdMaleModel"]["compRotations"] = {
+                "file": "std_male_comp_rotations.bin",
+                "format": "float32",
+                "shape": list(comp_rots.shape),
+                "count": int(comp_rots.shape[0]),
+                "stride": 16
+            }
+
+    if isinstance(std_male_model_data, dict) and 'verts' in std_male_model_data:
+        verts = to_np_local(std_male_model_data['verts'])
+        verts = cv_to_gl(verts)
+        with open(os.path.join(output_dir, "std_male_verts.bin"), "wb") as f:
+            f.write(verts.astype(np.float32).tobytes())
+        header["stdMaleModel"]["verts"] = {
+            "file": "std_male_verts.bin",
+            "format": "float32",
+            "shape": list(verts.shape),
+            "count": int(verts.shape[0]),
+            "stride": 12
+        }
+
+    with open(os.path.join(output_dir, "header.json"), "w") as f:
+        json.dump(header, f, indent=2)
+
+    print(f"Done! Output saved to {output_dir}")
+
+def main():
+    root = Path(__file__).resolve().parents[1]
+    model_root = root / 'assets' / 'model'
+
+    gs_example_input = model_root / 'gs_example' / 'pytorch' / 'gs_example.pkl'
+    gs_example_output = model_root / 'gs_example' / 'converted'
+    skeleton_input = model_root / '441_skeleton' / 'pytorch' / '441-skeleton.pt'
+    skeleton_output = model_root / '441_skeleton' / 'converted'
+    std_male_input = model_root / 'std_male_model' / 'pytorch' / 'std_male.model.pt'
+    std_male_output = model_root / 'std_male_model' / 'converted'
+
+    if gs_example_input.exists():
+        process_data(str(gs_example_input), str(gs_example_output))
+    else:
+        print(f"Missing gs_example.pkl: {gs_example_input}")
+
+    convert_441_skeleton(str(skeleton_input), str(skeleton_output))
+    convert_std_male_model(str(std_male_input), str(std_male_output))
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Convert GS assets to Web format")
-    parser.add_argument("input_file", help="Path to .pkl file")
-    parser.add_argument("output_dir", help="Directory to save output files")
-    parser.add_argument("--skeleton", help="Path to skeleton.pt file (auto-detected if not provided)")
-    
-    args = parser.parse_args()
-    
-    process_data(args.input_file, args.output_dir, args.skeleton)
+    main()

@@ -507,20 +507,21 @@ class Transform extends Container {
         });
 
         // toggle ui availability based on selection
-        const buildSkeletonOptions = () => {
+        const buildSkeletonOptions = (selection: SceneObject | null) => {
             const scene = window.scene;
             const library = scene?.skeletonLibrary;
             const options = [{ v: 'none', t: 'None' }];
 
+            const labelBase = selection instanceof Splat ? selection.name : 'Skeleton';
             const hasParents = !!(library?.parents && library.parents.length > 0);
             const hasStdMale = !!(library?.stdMaleRestRotations && library.stdMaleRestRotations.length > 0);
 
             if (hasParents && hasStdMale) {
-                options.push({ v: 'skeleton', t: 'Skeleton' });
+                options.push({ v: 'skeleton', t: `${labelBase}_Skeleton` });
             } else if (hasParents) {
-                options.push({ v: 'skeleton', t: 'Skeleton (parents only)' });
+                options.push({ v: 'skeleton', t: `${labelBase}_Skeleton (parents only)` });
             } else if (hasStdMale) {
-                options.push({ v: 'skeleton', t: 'Skeleton (std_male only)' });
+                options.push({ v: 'skeleton', t: `${labelBase}_Skeleton (std_male only)` });
             }
 
             return options;
@@ -551,7 +552,7 @@ class Transform extends Container {
             const isSelected = !!selection;
             const isSplat = selection instanceof Splat;
             if (isSplat) {
-                skeletonSelect.options = buildSkeletonOptions();
+                skeletonSelect.options = buildSkeletonOptions(selection);
             }
             animationSelect.options = buildAnimationOptions(selection);
             positionVector.enabled = rotationVector.enabled = scaleInput.enabled = isSelected;

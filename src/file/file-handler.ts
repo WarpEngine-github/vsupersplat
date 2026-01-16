@@ -297,7 +297,17 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
         return model;
     };
 
-    const importBinaryGsplat = async (files: ImportFile[], animationFrame: boolean) => {
+    const importBinaryGsplat = async (files: ImportFile[], animationFrame: boolean, baseName?: string) => {
+        const getUniqueName = (name: string) => {
+            let candidate = name || 'Splat';
+            let suffix = 1;
+            const existing = new Set(scene.elements.map((e) => (e as any).name ?? (e as any)._name));
+            while (existing.has(candidate)) {
+                candidate = `${name} (${suffix})`;
+                suffix += 1;
+            }
+            return candidate;
+        };
         // Find header.json file
         const headerIdx = files.findIndex(f => f.filename.toLowerCase() === 'header.json' || f.filename.toLowerCase().endsWith('header.json'));
         if (headerIdx < 0) {
@@ -330,6 +340,16 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
 
         urls.forEach(url => URL.revokeObjectURL(url));
 
+        if (model) {
+            const desiredName = baseName || model.name || (model.asset as any).name || 'Splat';
+            const uniqueName = getUniqueName(desiredName);
+            model.name = uniqueName;
+            model.asset.name = uniqueName;
+            if (model.asset.file) {
+                (model.asset.file as any).filename = `${uniqueName}.json`;
+            }
+        }
+
         // Create and add Armature FIRST if joints.bin and rest rotation data are available
         const armatureData = (model.asset as any).__armatureData;
         const animationData = (model.asset as any).__animationData;
@@ -345,7 +365,8 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
         }
         if (armatureData && armatureData.joints && armatureData.stdMaleRestRotations) {
             const { Armature } = await import('../armature/armature');
-            const armatureName = (model.name || 'Splat') + '_Armature';
+            const armatureBaseName = (model.name || 'Splat') + '_Armature';
+            const armatureName = getUniqueName(armatureBaseName);
             const armature = new Armature(armatureName, armatureData);
             
             // Add armature to scene FIRST
@@ -396,7 +417,8 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
                 importFiles.push({ filename, contents: new File([normalized], filename) });
             }
 
-            return await importBinaryGsplat(importFiles, animationFrame);
+            const baseName = file.filename.replace(/\.[^/.]+$/, '') || 'pkl';
+            return await importBinaryGsplat(importFiles, animationFrame, baseName);
         } catch (error) {
             await showLoadError(error.message ?? error, file.filename);
         }

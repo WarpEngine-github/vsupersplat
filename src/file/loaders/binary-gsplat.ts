@@ -165,11 +165,16 @@ const loadBinaryGsplat = async (assetSource: AssetSource): Promise<BinaryGsplatR
         storage_scale_2[i] = Math.log(Math.max(scaleZ, 1e-8));
         offset += 12;
 
-        // Rotation quaternion (16 bytes) - direct copy (already normalized)
-        storage_rot_0[i] = splatData.getFloat32(offset + 0, littleEndian);
-        storage_rot_1[i] = splatData.getFloat32(offset + 4, littleEndian);
-        storage_rot_2[i] = splatData.getFloat32(offset + 8, littleEndian);
-        storage_rot_3[i] = splatData.getFloat32(offset + 12, littleEndian);
+        // Rotation quaternion (16 bytes)
+        // splats.bin stores x,y,z,w but GSplatData expects rot_0 = w, rot_1 = x, rot_2 = y, rot_3 = z
+        const qx = splatData.getFloat32(offset + 0, littleEndian);
+        const qy = splatData.getFloat32(offset + 4, littleEndian);
+        const qz = splatData.getFloat32(offset + 8, littleEndian);
+        const qw = splatData.getFloat32(offset + 12, littleEndian);
+        storage_rot_0[i] = qw;
+        storage_rot_1[i] = qx;
+        storage_rot_2[i] = qy;
+        storage_rot_3[i] = qz;
         offset += 16;
 
         // Color RGBA (4 bytes) - convert uint8 to spherical harmonics

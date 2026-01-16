@@ -162,40 +162,38 @@ if 'W' in data:
 if 'joints' in data:
     joints = to_np(data['joints'])
 
+# Animation import disabled for now (commented out block kept for reference).
+# poses = None
+# animation_num_bones = None
+# if 'poses' in data:
+#     raw_poses = data['poses']
+#     if hasattr(raw_poses, 'item') and getattr(raw_poses, 'ndim', None) == 0:
+#         raw_poses = raw_poses.item()
+#     if isinstance(raw_poses, dict):
+#         rotations = to_np(raw_poses['rotations'])
+#         translations = to_np(raw_poses['translations'])
+#         num_frames = rotations.shape[0]
+#         num_bones_1185 = rotations.shape[1]
+#         animation_num_bones = num_bones_1185
+#         translations = cv_to_gl(translations)
+#         rotations = cv_to_gl_quat(rotations)
+#         # Normalize quaternions
+#         quat_norms = np.linalg.norm(rotations, axis=-1, keepdims=True)
+#         rotations = rotations / np.clip(quat_norms, 1e-8, None)
+#         quats_flat = rotations.reshape(-1, 4)
+#         trans_flat = translations.reshape(-1, 3)
+#         r_mats = Rotation.from_quat(quats_flat).as_matrix()
+#         matrices = np.eye(4, dtype=np.float32).reshape(1, 4, 4).repeat(quats_flat.shape[0], axis=0)
+#         matrices[:, :3, :3] = r_mats
+#         matrices[:, :3, 3] = trans_flat
+#         matrices_T = matrices.transpose(0, 2, 1)
+#         poses = matrices_T.reshape(num_frames, int(matrices_T.shape[0] / num_frames), 16)
+#     else:
+#         poses = to_np(raw_poses)
+# elif 'body_pose' in data:
+#     poses = to_np(data['body_pose'])
 poses = None
 animation_num_bones = None
-if 'poses' in data:
-    raw_poses = data['poses']
-    if hasattr(raw_poses, 'item') and getattr(raw_poses, 'ndim', None) == 0:
-        raw_poses = raw_poses.item()
-    if isinstance(raw_poses, dict):
-        rotations = to_np(raw_poses['rotations'])
-        translations = to_np(raw_poses['translations'])
-        num_frames = rotations.shape[0]
-        num_bones_1185 = rotations.shape[1]
-        animation_num_bones = num_bones_1185
-        translations = cv_to_gl(translations)
-        rotations = cv_to_gl_quat(rotations)
-        # Normalize quaternions and fix zero-norm entries
-        quat_norms = np.linalg.norm(rotations, axis=-1, keepdims=True)
-        zero_mask = quat_norms < 1e-8
-        if np.any(zero_mask):
-            rotations = rotations.copy()
-            rotations[zero_mask[..., 0]] = np.array([0.0, 0.0, 0.0, 1.0], dtype=rotations.dtype)
-            quat_norms = np.linalg.norm(rotations, axis=-1, keepdims=True)
-        rotations = rotations / np.clip(quat_norms, 1e-8, None)
-        quats_flat = rotations.reshape(-1, 4)
-        trans_flat = translations.reshape(-1, 3)
-        r_mats = Rotation.from_quat(quats_flat).as_matrix()
-        matrices = np.eye(4, dtype=np.float32).reshape(1, 4, 4).repeat(quats_flat.shape[0], axis=0)
-        matrices[:, :3, :3] = r_mats
-        matrices[:, :3, 3] = trans_flat
-        matrices_T = matrices.transpose(0, 2, 1)
-        poses = matrices_T.reshape(num_frames, int(matrices_T.shape[0] / num_frames), 16)
-    else:
-        poses = to_np(raw_poses)
-elif 'body_pose' in data:
-    poses = to_np(data['body_pose'])
 
 OPACITY_THRESHOLD = 0.1
 opacity_mask = opacities >= OPACITY_THRESHOLD
@@ -215,12 +213,17 @@ means = cv_to_gl(means)
 if joints is not None:
     joints = cv_to_gl(joints)
 
+# Convert covariance to GL coordinates before decomposition.
+flip = np.array([1.0, -1.0, -1.0], dtype=covs.dtype)
+covs = covs * flip[None, :, None]
+covs = covs * flip[None, None, :]
+
 w, v = np.linalg.eigh(covs)
 scales = np.sqrt(np.maximum(w, 1e-8))
+# Use eigenvectors as rotation columns so cov ≈ R * diag(s^2) * R^T.
 dets = np.linalg.det(v)
 v[dets < 0, :, 0] *= -1
 rotations = Rotation.from_matrix(v).as_quat()
-rotations = cv_to_gl_quat(rotations)
 
 SH_C0 = 0.28209479177387814
 color_rgb = colors[:, :3]

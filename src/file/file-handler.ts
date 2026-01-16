@@ -334,7 +334,13 @@ const initFileHandler = (scene: Scene, events: Events, dropTarget: HTMLElement) 
         const armatureData = (model.asset as any).__armatureData;
         const animationData = (model.asset as any).__animationData;
         if (animationData) {
-            const key = model.name || (model.asset as any).name || 'animation';
+            const baseKey = model.name || (model.asset as any).name || 'animation';
+            let key = baseKey;
+            let suffix = 1;
+            while (scene.skeletalAnimationLibrary.has(key)) {
+                key = `${baseKey} (${suffix})`;
+                suffix += 1;
+            }
             scene.skeletalAnimationLibrary.set(key, animationData);
         }
         if (armatureData && armatureData.joints && armatureData.stdMaleRestRotations) {
